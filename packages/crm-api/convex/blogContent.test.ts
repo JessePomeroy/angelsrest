@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
 
-import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -12,14 +11,10 @@ import {
 	serializeAuthorDraft,
 	validateAuthorDraft,
 } from "./helpers/blogContentValidators";
-import schema from "./schema";
+
+import { SITE_A, SITE_B, ASSET_A, setupWebMedia } from "../test/webMediaFixtures";
 
 const modules = import.meta.glob("./**/*.ts");
-const SITE_A = { siteUrl: "site-a.example", email: "admin-a@example.com" };
-const SITE_B = { siteUrl: "site-b.example", email: "admin-b@example.com" };
-const ASSET_A = "123e4567-e89b-42d3-a456-426614174000";
-const ASSET_B = "223e4567-e89b-42d3-a456-426614174001";
-const ASSET_C = "323e4567-e89b-42d3-a456-426614174002";
 const EXACT_PORTRAIT_FRAMING = {
 	crop: {
 		top: 0.010927888941589192,
@@ -34,66 +29,6 @@ const EXACT_PORTRAIT_FRAMING = {
 		height: 0.527364342876655,
 	},
 } satisfies BlogImageFraming;
-
-function readyAsset(siteUrl: string, assetId: string) {
-	const prefix = `sites/${siteUrl}/web/${assetId}/`;
-	return {
-		assetId,
-		originalFilename: `${assetId}.jpg`,
-		source: {
-			contentType: "image/jpeg" as const,
-			sizeBytes: 1_000_000,
-			width: 3000,
-			height: 2000,
-		},
-		master: {
-			key: `${prefix}master.webp`,
-			contentType: "image/webp" as const,
-			sizeBytes: 700_000,
-			width: 3000,
-			height: 2000,
-		},
-		derivatives: {
-			thumb: { key: `${prefix}thumb.webp`, contentType: "image/webp" as const, width: 320, height: 213 },
-			card: { key: `${prefix}card.webp`, contentType: "image/webp" as const, width: 768, height: 512 },
-			display1280: { key: `${prefix}display-1280.webp`, contentType: "image/webp" as const, width: 1280, height: 853 },
-			display2048: { key: `${prefix}display-2048.webp`, contentType: "image/webp" as const, width: 2048, height: 1365 },
-			display2560: { key: `${prefix}display-2560.webp`, contentType: "image/webp" as const, width: 2560, height: 1707 },
-		},
-	};
-}
-
-async function setup() {
-	const t = convexTest(schema, modules);
-	for (const site of [SITE_A, SITE_B]) {
-		await t.mutation(internal.platform.seedClient, {
-			name: site.siteUrl,
-			email: site.email,
-			siteUrl: site.siteUrl,
-			tier: "full",
-			subscriptionStatus: "active",
-			adminEmails: [site.email],
-			role: "client",
-		});
-	}
-	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true });
-	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true });
-	const [assetA, assetB, assetC] = await Promise.all([
-		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_A.siteUrl,
-			asset: readyAsset(SITE_A.siteUrl, ASSET_A),
-		}),
-		adminB.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_B.siteUrl,
-			asset: readyAsset(SITE_B.siteUrl, ASSET_B),
-		}),
-		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_A.siteUrl,
-			asset: readyAsset(SITE_A.siteUrl, ASSET_C),
-		}),
-	]);
-	return { t, adminA, adminB, assetA, assetB, assetC };
-}
 
 function category(title: string, slug: string) {
 	return { kind: "category" as const, title, slug };
@@ -154,7 +89,7 @@ async function expectError(operation: Promise<unknown>, message: RegExp) {
 	await expect(operation).rejects.toThrow(message);
 }
 
-type Admin = Awaited<ReturnType<typeof setup>>["adminA"];
+type Admin = Awaited<ReturnType<typeof setupWebMedia>>["adminA"];
 
 async function create(
 	admin: Admin,
@@ -240,7 +175,7 @@ describe("Author portrait framing contract", () => {
 
 describe("tenant-scoped Blog supporting content", () => {
 	test("requires authentication, tenant membership, and matching document kinds", async () => {
-		const { t, adminA, adminB } = await setup();
+		const { t, adminA, adminB } = await setupWebMedia(modules);
 		await expectError(
 			t.mutation(api.blogContent.createDraft, {
 				siteUrl: SITE_A.siteUrl,
@@ -271,7 +206,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("assigns stable ranks and scopes keys and slugs by tenant and kind", async () => {
-		const { adminA, adminB } = await setup();
+		const { adminA, adminB } = await setupWebMedia(modules);
 		const first = await create(adminA, SITE_A.siteUrl, "shared-key", author("First Author", "shared-slug"));
 		await create(adminA, SITE_A.siteUrl, "second-author", author("Second Author", "second-author"));
 		await create(adminA, SITE_A.siteUrl, "shared-key", category("Shared Category", "shared-slug"));
@@ -304,7 +239,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("deduplicates create and save retries while rejecting stale changes", async () => {
-		const { t, adminA } = await setup();
+		const { t, adminA } = await setupWebMedia(modules);
 		const initial = category("Journal", "journal");
 		const first = await create(adminA, SITE_A.siteUrl, "category-journal", initial);
 		expect(await create(adminA, SITE_A.siteUrl, "category-journal", initial)).toEqual(first);
@@ -331,7 +266,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("accepts incomplete drafts but enforces publication requirements", async () => {
-		const { adminA, assetA } = await setup();
+		const { adminA, assetA } = await setupWebMedia(modules);
 		const incomplete = await create(adminA, SITE_A.siteUrl, "category-incomplete", {
 			kind: "category",
 		});
@@ -390,7 +325,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("makes exact publish retries harmless without overwriting newer drafts", async () => {
-		const { adminA } = await setup();
+		const { adminA } = await setupWebMedia(modules);
 		const created = await create(
 			adminA,
 			SITE_A.siteUrl,
@@ -414,7 +349,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("keeps drafts private and returns only the public author projection", async () => {
-		const { t, adminA, assetA } = await setup();
+		const { t, adminA, assetA } = await setupWebMedia(modules);
 		const created = await create(
 			adminA,
 			SITE_A.siteUrl,
@@ -500,7 +435,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("stores and publicly projects exact provider-neutral portrait framing", async () => {
-		const { t, adminA, assetA } = await setup();
+		const { t, adminA, assetA } = await setupWebMedia(modules);
 		const draft = author(
 			"Exact Framing",
 			"exact-framing",
@@ -536,7 +471,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("enforces portrait tenant, readiness, and active-reference lifecycle", async () => {
-		const { t, adminA, assetA, assetB, assetC } = await setup();
+		const { t, adminA, assetA, assetB, assetC } = await setupWebMedia(modules);
 		await expectError(
 			create(adminA, SITE_A.siteUrl, "author-cross-tenant", author("Cross Tenant", "cross-tenant", assetB.id)),
 			/ready media asset from the same site/i,
@@ -602,7 +537,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("fails closed when revision pointers cross document ownership", async () => {
-		const { t, adminA, adminB } = await setup();
+		const { t, adminA, adminB } = await setupWebMedia(modules);
 		const local = await adminA.mutation(api.blogContent.createDraft, {
 			siteUrl: SITE_A.siteUrl,
 			documentKey: "category-local",
@@ -642,7 +577,7 @@ describe("tenant-scoped Blog supporting content", () => {
 	});
 
 	test("fails closed on published slug divergence and treats bad route slugs as absent", async () => {
-		const { t, adminA } = await setup();
+		const { t, adminA } = await setupWebMedia(modules);
 		const created = await create(
 			adminA,
 			SITE_A.siteUrl,

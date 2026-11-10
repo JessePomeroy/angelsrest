@@ -108,3 +108,35 @@ checks performed and their bounded result, and the remaining permitted action.
 Do not log secrets, private capability URLs, raw provider responses, or customer
 details. Keep source merge, runtime activation, provider queue acknowledgment,
 identity-checked confirmation, and shipment as distinct milestones.
+
+## Source retirement assessment — November 9, 2026
+
+The debloat pass retains the versioned fulfillment APIs. Current Hub calls in
+`src/lib/server/printFulfillment.ts` use `claimPrintFulfillmentV5`. V4 and V5
+already share `claimPrintFulfillmentWithAdmission`; deleting the small V4 wrapper
+would remove compatibility rather than a second coordinator implementation.
+
+An older name can still own current work: `expirePrintFulfillmentPreparationV4`
+is scheduled by the shared coordinator and explicitly handles both V4 and V5
+rows. Removing it would break preparation expiry for the current protocol.
+V1–V3 also retain exact result shapes and fences that prevent older hosts from
+claiming newer obligations after a lease expires or is released. The existing
+order tests exercise these mixed-version guards; they are not dead-symbol tests.
+
+Local caller searches cannot establish deployed or historical non-use. No live
+order inventory or provider operation was performed for this assessment. Before
+a separate retirement change, establish all of the following:
+
+- Every deployed runner, supported package consumer and retained rollback source
+  has adopted the replacement contract; an archived consumer is not assumed gone.
+- Authorized operational evidence shows which unresolved obligations, old row
+  shapes and scheduled callbacks still require each version, with a reviewed
+  continuation or drain plan. Absence from a local import graph is insufficient.
+- The API removal has an explicit compatibility/release disposition and an
+  ordered deployment/rollback plan. A source cleanup does not authorize that rollout.
+- Current V5 expiry and old/new-host concurrency, uncertain submission, refund
+  and notification evidence remain protected by focused tests and contract checks.
+
+Until those conditions are met, retain the APIs and their tests. This assessment
+completes the bounded investigation; it does not declare retirement safe or
+request a migration, live-data read, deployment or provider retry.

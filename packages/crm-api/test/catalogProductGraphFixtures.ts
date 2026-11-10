@@ -1,3 +1,5 @@
+import { SITE_A, SITE_B, readyAsset } from "./webMediaFixtures";
+export { SITE_A, SITE_B, readyAsset } from "./webMediaFixtures";
 import { convexTest } from "convex-test";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -5,65 +7,9 @@ import type { CatalogProductGraphV2Draft } from "../convex/helpers/catalogProduc
 import type { CatalogProductDraft, CatalogProductKind } from "../convex/helpers/catalogProductValidators";
 import schema from "../convex/schema";
 
-export const SITE_A = { siteUrl: "site-a.example", email: "admin-a@example.com" };
-export const SITE_B = { siteUrl: "site-b.example", email: "admin-b@example.com" };
-
 export function workerAssetId(site: "a" | "b" | "m", index: number) {
 	const prefix = site === "a" ? "10000000" : site === "b" ? "20000000" : "30000000";
 	return `${prefix}-0000-4000-8000-${String(index).padStart(12, "0")}`;
-}
-
-export function readyAsset(siteUrl: string, assetId: string) {
-	const prefix = `sites/${siteUrl}/web/${assetId}/`;
-	return {
-		assetId,
-		originalFilename: `${assetId}.jpg`,
-		source: {
-			contentType: "image/jpeg" as const,
-			sizeBytes: 1_000_000,
-			width: 3000,
-			height: 2000,
-		},
-		master: {
-			key: `${prefix}master.webp`,
-			contentType: "image/webp" as const,
-			sizeBytes: 700_000,
-			width: 3000,
-			height: 2000,
-		},
-		derivatives: {
-			thumb: {
-				key: `${prefix}thumb.webp`,
-				contentType: "image/webp" as const,
-				width: 320,
-				height: 213,
-			},
-			card: {
-				key: `${prefix}card.webp`,
-				contentType: "image/webp" as const,
-				width: 768,
-				height: 512,
-			},
-			display1280: {
-				key: `${prefix}display-1280.webp`,
-				contentType: "image/webp" as const,
-				width: 1280,
-				height: 853,
-			},
-			display2048: {
-				key: `${prefix}display-2048.webp`,
-				contentType: "image/webp" as const,
-				width: 2048,
-				height: 1365,
-			},
-			display2560: {
-				key: `${prefix}display-2560.webp`,
-				contentType: "image/webp" as const,
-				width: 2560,
-				height: 1707,
-			},
-		},
-	};
 }
 
 export function printSourceAsset(siteUrl: string, assetKey: string, index: number) {

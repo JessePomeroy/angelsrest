@@ -10,8 +10,8 @@ import type {
 	CatalogProductGraphV2Draft,
 } from "./catalogProductGraphValidators";
 import {
-	type PaidDigitalFileAsset,
-	type PrivatePrintSourceAsset,
+	privatePrintSourceAssetValue,
+	paidDigitalFileAssetValue,
 	toEditorSafePaidDigitalFileAsset,
 	toEditorSafePrivatePrintSourceAsset,
 	validatePaidDigitalFileAsset,
@@ -86,49 +86,6 @@ function readyWebAssetValue(asset: Doc<"mediaAssets">) {
 	};
 }
 
-function privatePrintSourceValue(
-	asset: Doc<"catalogPrintSourceAssets">,
-): PrivatePrintSourceAsset {
-	return {
-		siteUrl: asset.siteUrl,
-		assetKey: asset.assetKey,
-		privateObjectKey: asset.privateObjectKey,
-		status: asset.status,
-		originalFilename: asset.originalFilename,
-		mimeType: asset.mimeType,
-		sizeBytes: asset.sizeBytes,
-		widthPixels: asset.widthPixels,
-		heightPixels: asset.heightPixels,
-		sha256: asset.sha256,
-		provenance: asset.provenance,
-		createdAt: asset.createdAt,
-		createdBy: asset.createdBy,
-		verifiedAt: asset.verifiedAt,
-		verifiedBy: asset.verifiedBy,
-	};
-}
-
-function paidDigitalFileValue(
-	asset: Doc<"catalogDigitalFileAssets">,
-): PaidDigitalFileAsset {
-	return {
-		siteUrl: asset.siteUrl,
-		assetKey: asset.assetKey,
-		privateObjectKey: asset.privateObjectKey,
-		status: asset.status,
-		originalFilename: asset.originalFilename,
-		mimeType: asset.mimeType,
-		sizeBytes: asset.sizeBytes,
-		sha256: asset.sha256,
-		...(asset.version === undefined ? {} : { version: asset.version }),
-		provenance: asset.provenance,
-		createdAt: asset.createdAt,
-		createdBy: asset.createdBy,
-		verifiedAt: asset.verifiedAt,
-		verifiedBy: asset.verifiedBy,
-	};
-}
-
 async function requireReadyWebMediaAsset(
 	ctx: CatalogGraphContext,
 	siteUrl: string,
@@ -165,7 +122,7 @@ export async function requireVerifiedPrintSourceAsset(
 		);
 	}
 	await requirePrivateAssetAvailable(ctx, siteUrl, "print_source", asset.assetKey);
-	validatePrivatePrintSourceAsset(privatePrintSourceValue(asset));
+	validatePrivatePrintSourceAsset(privatePrintSourceAssetValue(asset));
 	return asset;
 }
 
@@ -183,7 +140,7 @@ export async function requireVerifiedPaidFileAssetById(
 		);
 	}
 	await requirePrivateAssetAvailable(ctx, siteUrl, "paid_digital_file", asset.assetKey);
-	validatePaidDigitalFileAsset(paidDigitalFileValue(asset));
+	validatePaidDigitalFileAsset(paidDigitalFileAssetValue(asset));
 	return asset;
 }
 

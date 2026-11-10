@@ -2,15 +2,19 @@ import { env as publicEnv } from "$env/dynamic/public";
 import { getCheckoutSnapshotReservationCredential } from "$lib/server/checkoutBridgeConfig";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import {
+	checkoutHttpOrigin,
+	CHECKOUT_REQUEST_MAX_BYTES as REQUEST_MAX_BYTES,
+	CHECKOUT_REQUEST_TIMEOUT_MS as REQUEST_TIMEOUT_MS,
+	CHECKOUT_RESPONSE_MAX_BYTES as RESPONSE_MAX_BYTES,
+	readCheckoutHttpResponse,
+} from "$lib/server/checkoutHttp";
+import {
 	type LumaPrintsConnection,
 	parseLumaPrintsConnection,
 } from "$lib/server/lumaprintsConnections";
 
 const RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const BIND_PATH = "/commerce/checkout-snapshots/bind";
-const REQUEST_MAX_BYTES = 64 * 1024;
-const RESPONSE_MAX_BYTES = 2 * 1024;
-const REQUEST_TIMEOUT_MS = 5_000;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const encoder = new TextEncoder();
 
@@ -46,7 +50,7 @@ export function createCheckoutSnapshotReservationClient({
 	credential?: (site: string) => string;
 	timeoutMs?: number;
 } = {}): CheckoutSnapshotReservationClient {
-	const origin = reservationOrigin(baseUrl);
+	const origin = checkoutHttpOrigin(baseUrl, unavailable);
 
 	async function post(path: string, site: string, body: unknown) {
 		const serialized = JSON.stringify(body);
@@ -64,7 +68,7 @@ export function createCheckoutSnapshotReservationClient({
 			const declaredLength = Number(response.headers.get("Content-Length"));
 			if (Number.isFinite(declaredLength) && declaredLength > RESPONSE_MAX_BYTES)
 				throw unavailable();
-			const text = await readBoundedResponse(response);
+			const text = await readCheckoutHttpResponse(response, unavailable);
 			if (response.status === 409) throw new ReservationConflict();
 			if (!response.ok) throw unavailable();
 			return JSON.parse(text) as unknown;
@@ -145,41 +149,6 @@ export function createCheckoutSnapshotReservationClient({
 				throw unavailable();
 		},
 	};
-}
-
-function reservationOrigin(value: string | undefined) {
-	try {
-		const url = new URL(value ?? "");
-		if (
-			url.protocol !== "https:" ||
-			url.username ||
-			url.password ||
-			url.pathname !== "/" ||
-			url.search ||
-			url.hash
-		)
-			throw unavailable();
-		return url.origin;
-	} catch {
-		throw unavailable();
-	}
-}
-
-async function readBoundedResponse(response: Response) {
-	const reader = response.body?.getReader();
-	if (!reader) return "";
-	const bytes = new Uint8Array(RESPONSE_MAX_BYTES);
-	let size = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) return new TextDecoder().decode(bytes.subarray(0, size));
-		if (size + value.byteLength > RESPONSE_MAX_BYTES) {
-			await reader.cancel();
-			throw unavailable();
-		}
-		bytes.set(value, size);
-		size += value.byteLength;
-	}
 }
 
 class ReservationConflict extends Error {}
