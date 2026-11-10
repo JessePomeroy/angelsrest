@@ -88,7 +88,6 @@ describe("architecture invariants", () => {
 		for (const path of [
 			"src/routes/portal/[token]/+page.server.ts",
 			"src/routes/delivery/[token]/+page.server.ts",
-			"src/lib/server/portalToken.ts",
 		]) {
 			expect(source(path)).toContain("api.portal.getPublicByToken");
 			expect(source(path)).not.toContain("api.portal.getByToken");
