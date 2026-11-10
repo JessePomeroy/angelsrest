@@ -1,6 +1,13 @@
 import { createHash, createHmac } from "node:crypto";
 import { env as publicEnv } from "$env/dynamic/public";
 import { getCheckoutSnapshotReservationCredential } from "$lib/server/checkoutBridgeConfig";
+import {
+	checkoutHttpOrigin,
+	CHECKOUT_REQUEST_MAX_BYTES as REQUEST_MAX_BYTES,
+	CHECKOUT_REQUEST_TIMEOUT_MS as REQUEST_TIMEOUT_MS,
+	CHECKOUT_RESPONSE_MAX_BYTES as RESPONSE_MAX_BYTES,
+	readCheckoutHttpResponse,
+} from "$lib/server/checkoutHttp";
 import type { CheckoutFinancialIntent } from "../../../packages/crm-api/convex/helpers/checkoutFinancialSnapshot";
 
 const BEGIN_PATH = "/commerce/checkout-admissions/begin";
@@ -8,9 +15,6 @@ const MARK_CREATING_PATH = "/commerce/checkout-admissions/mark-creating";
 const MARK_UNCERTAIN_PATH = "/commerce/checkout-admissions/mark-uncertain";
 const BIND_PATH = "/commerce/checkout-admissions/bind";
 const RELEASE_PATH = "/commerce/checkout-admissions/release";
-const REQUEST_MAX_BYTES = 64 * 1024;
-const RESPONSE_MAX_BYTES = 2 * 1024;
-const REQUEST_TIMEOUT_MS = 5_000;
 const DIGEST = /^[0-9a-f]{64}$/;
 const ADMISSION_STATES = new Set([
 	"active_prestripe",
@@ -83,7 +87,7 @@ export function createCheckoutSessionAdmissionClient({
 	credential?: (site: string) => string;
 	timeoutMs?: number;
 } = {}): CheckoutSessionAdmissionClient {
-	const origin = admissionOrigin(baseUrl);
+	const origin = checkoutHttpOrigin(baseUrl, unavailable);
 
 	async function post(path: string, site: string, body: unknown) {
 		const serialized = JSON.stringify(body);
@@ -102,7 +106,7 @@ export function createCheckoutSessionAdmissionClient({
 			if (Number.isFinite(declaredLength) && declaredLength > RESPONSE_MAX_BYTES) {
 				throw unavailable();
 			}
-			const text = await readBoundedResponse(response);
+			const text = await readCheckoutHttpResponse(response, unavailable);
 			if (!response.ok) throw unavailable();
 			return JSON.parse(text) as unknown;
 		} catch {
@@ -274,41 +278,6 @@ function isCreatingResponse(
 		Number.isSafeInteger(value.requestedStripeExpiresAt) &&
 		Number(value.requestedStripeExpiresAt) > 0
 	);
-}
-
-function admissionOrigin(value: string | undefined) {
-	try {
-		const url = new URL(value ?? "");
-		if (
-			url.protocol !== "https:" ||
-			url.username ||
-			url.password ||
-			url.pathname !== "/" ||
-			url.search ||
-			url.hash
-		)
-			throw unavailable();
-		return url.origin;
-	} catch {
-		throw unavailable();
-	}
-}
-
-async function readBoundedResponse(response: Response) {
-	const reader = response.body?.getReader();
-	if (!reader) return "";
-	const bytes = new Uint8Array(RESPONSE_MAX_BYTES);
-	let size = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) return new TextDecoder().decode(bytes.subarray(0, size));
-		if (size + value.byteLength > RESPONSE_MAX_BYTES) {
-			await reader.cancel();
-			throw unavailable();
-		}
-		bytes.set(value, size);
-		size += value.byteLength;
-	}
 }
 
 function exactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
