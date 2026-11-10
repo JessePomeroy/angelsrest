@@ -90,7 +90,7 @@ async function expectError(operation: Promise<unknown>, message: RegExp) {
 	await expect(operation).rejects.toThrow(message);
 }
 
-type Admin = Awaited<ReturnType<typeof setup>>["adminA"];
+type Admin = Awaited<ReturnType<typeof setupWebMedia>>["adminA"];
 
 async function create(
 	admin: Admin,
