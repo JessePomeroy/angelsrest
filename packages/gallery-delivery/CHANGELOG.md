@@ -1,5 +1,11 @@
 # @jessepomeroy/gallery-delivery
 
+## 0.4.1
+
+### Patch Changes
+
+- c951edb: Share prepared-ZIP download planning for unknown and oversized selections while preserving size limits and request fields.
+
 ## 0.4.0
 
 ### Minor Changes
