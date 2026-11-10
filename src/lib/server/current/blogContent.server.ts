@@ -1,5 +1,4 @@
 import { error, redirect } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import {
 	BLOG_PRESENTATIONS,
@@ -15,7 +14,11 @@ import {
 	type BlogTextSpan,
 } from "$lib/blog/content";
 import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
-import { getConvexUrl } from "$lib/server/runtimeConfig";
+import {
+	convexReadClient,
+	ProjectionError,
+	projectionValidators,
+} from "$lib/server/current/projection.server";
 
 const BLOG_LIST_LIMIT = 12;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -41,38 +44,11 @@ type BlogReader = {
 	resolvePublishedSlug(slug: string, signal: AbortSignal): Promise<unknown>;
 };
 
-export class BlogProjectionError extends Error {
-	constructor() {
-		super("Malformed public Blog projection");
-	}
-}
-
 function fail(): never {
-	throw new BlogProjectionError();
+	throw new ProjectionError("Malformed public Blog projection");
 }
 
-function object(
-	value: unknown,
-	required: readonly string[],
-	optional: readonly string[] = [],
-): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) fail();
-	if (Object.getPrototypeOf(value) !== Object.prototype) fail();
-	const keys = Reflect.ownKeys(value);
-	if (keys.some((key) => typeof key !== "string")) fail();
-	const allowed = new Set([...required, ...optional]);
-	if (
-		required.some((key) => !Object.hasOwn(value, key)) ||
-		keys.some((key) => !allowed.has(key as string))
-	)
-		fail();
-	return value as Record<string, unknown>;
-}
-
-function list(value: unknown, maximum: number): unknown[] {
-	if (!Array.isArray(value) || value.length > maximum) fail();
-	return value;
-}
+const { object, list, integer } = projectionValidators(fail);
 
 function requiredText(value: unknown, maximum: number, pattern?: RegExp): string {
 	if (
@@ -94,12 +70,6 @@ function rawText(value: unknown, maximum: number): string {
 function optionalText(value: unknown, maximum: number): string | null {
 	if (value === undefined || value === null || value === "") return null;
 	return requiredText(value, maximum);
-}
-
-function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER): number {
-	if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum)
-		fail();
-	return value as number;
 }
 
 function canonicalSlug(value: unknown): string {
@@ -411,7 +381,7 @@ function convexSummaryPayload(value: unknown): BlogPostSummary {
 	};
 }
 
-export function adaptConvexBlogIndex(value: unknown): BlogPostSummary[] {
+function adaptConvexBlogIndex(value: unknown): BlogPostSummary[] {
 	const posts = list(value, BLOG_LIST_LIMIT).map((raw) => {
 		const row = object(raw, ["revisionId", "rank", "publishedAt", "payload"]);
 		integer(row.rank, 0);
@@ -422,7 +392,7 @@ export function adaptConvexBlogIndex(value: unknown): BlogPostSummary[] {
 	return posts;
 }
 
-export function adaptConvexBlogPost(value: unknown): BlogPostDetail | null {
+function adaptConvexBlogPost(value: unknown): BlogPostDetail | null {
 	if (value === null) return null;
 	const row = object(value, ["revisionId", "publishedAt", "payload"]);
 	integer(row.publishedAt, 0);
@@ -491,25 +461,20 @@ function adaptSlugResolution(value: unknown): SlugResolution {
 }
 
 function createBlogReader(): BlogReader {
-	const request = (signal: AbortSignal) =>
-		new ConvexHttpClient(getConvexUrl(), {
-			logger: false,
-			fetch: (input, init) => fetch(input, { ...init, signal }),
-		});
 	return {
 		listPublished: (pageNumber, signal) =>
-			request(signal).query(api.postContent.listPublishedPage, {
+			convexReadClient(signal).query(api.postContent.listPublishedPage, {
 				siteUrl: SITE_DOMAIN,
 				pageNumber,
 				limit: BLOG_LIST_LIMIT,
 			}),
 		getPublishedBySlug: (slug, signal) =>
-			request(signal).query(api.postContent.getPublishedBySlug, {
+			convexReadClient(signal).query(api.postContent.getPublishedBySlug, {
 				siteUrl: SITE_DOMAIN,
 				slug,
 			}),
 		resolvePublishedSlug: (slug, signal) =>
-			request(signal).query(api.postContent.resolvePublishedSlug, {
+			convexReadClient(signal).query(api.postContent.resolvePublishedSlug, {
 				siteUrl: SITE_DOMAIN,
 				slug,
 			}),

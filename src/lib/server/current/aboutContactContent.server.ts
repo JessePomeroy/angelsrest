@@ -1,9 +1,12 @@
 import { error } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import type { AboutContactContent } from "$lib/about-contact/content";
 import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
-import { getConvexUrl } from "$lib/server/runtimeConfig";
+import {
+	convexReadClient,
+	ProjectionError,
+	projectionValidators,
+} from "$lib/server/current/projection.server";
 
 const MEDIA_ROOT = `https://media.angelsrest.online/sites/${SITE_DOMAIN}/web`;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -12,38 +15,11 @@ type ConvexReader = {
 	loadPublished(signal: AbortSignal): Promise<unknown>;
 };
 
-export class AboutContactProjectionError extends Error {
-	constructor() {
-		super("Malformed public About and Contact projection");
-	}
-}
-
 function fail(): never {
-	throw new AboutContactProjectionError();
+	throw new ProjectionError("Malformed public About and Contact projection");
 }
 
-function object(
-	value: unknown,
-	required: readonly string[],
-	optional: readonly string[] = [],
-): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) fail();
-	if (Object.getPrototypeOf(value) !== Object.prototype) fail();
-	const keys = Reflect.ownKeys(value);
-	if (keys.some((key) => typeof key !== "string")) fail();
-	const allowed = new Set([...required, ...optional]);
-	if (
-		required.some((key) => !Object.hasOwn(value, key)) ||
-		keys.some((key) => !allowed.has(key as string))
-	)
-		fail();
-	return value as Record<string, unknown>;
-}
-
-function list(value: unknown, maximum: number): unknown[] {
-	if (!Array.isArray(value) || value.length > maximum) fail();
-	return value;
-}
+const { object, list, integer } = projectionValidators(fail);
 
 function requiredText(value: unknown, maximum: number, pattern?: RegExp): string {
 	if (typeof value !== "string") fail();
@@ -59,12 +35,6 @@ function optionalText(value: unknown, maximum: number): string | null {
 	if (!normalized) return null;
 	if (normalized.length > maximum) fail();
 	return normalized;
-}
-
-function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
-	if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum)
-		fail();
-	return value as number;
 }
 
 function publicUrl(value: unknown): string {
@@ -269,13 +239,10 @@ export function projectSiteSettingsInstagramUrl(value: unknown): string | null {
 function createConvexReader(): ConvexReader {
 	return {
 		async loadPublished(signal) {
-			const client = new ConvexHttpClient(getConvexUrl(), {
-				logger: false,
-				fetch: (input, init) => fetch(input, { ...init, signal }),
-			});
-			return await client.query(api.content.getPublishedAboutContactWithRevisions, {
-				siteUrl: SITE_DOMAIN,
-			});
+			return await convexReadClient(signal).query(
+				api.content.getPublishedAboutContactWithRevisions,
+				{ siteUrl: SITE_DOMAIN },
+			);
 		},
 	};
 }

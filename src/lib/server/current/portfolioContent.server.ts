@@ -1,8 +1,11 @@
 import { error } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { getConvexUrl } from "$lib/server/runtimeConfig";
+import {
+	convexReadClient,
+	ProjectionError,
+	projectionValidators,
+} from "$lib/server/current/projection.server";
 
 const GALLERY_MAX = 100;
 const PLACEMENT_MAX = 500;
@@ -41,34 +44,11 @@ type ConvexReader = {
 	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<unknown>;
 };
 
-export class PortfolioProjectionError extends Error {
-	constructor() {
-		super("Malformed public Portfolio projection");
-	}
-}
-
 function fail(): never {
-	throw new PortfolioProjectionError();
+	throw new ProjectionError("Malformed public Portfolio projection");
 }
 
-function object(value: unknown, required: readonly string[]): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) fail();
-	if (Object.getPrototypeOf(value) !== Object.prototype) fail();
-	const keys = Reflect.ownKeys(value);
-	const allowed = new Set(required);
-	if (
-		keys.some((key) => typeof key !== "string") ||
-		required.some((key) => !Object.hasOwn(value, key)) ||
-		keys.some((key) => !allowed.has(key as string))
-	)
-		fail();
-	return value as Record<string, unknown>;
-}
-
-function list(value: unknown, maximum: number) {
-	if (!Array.isArray(value) || value.length > maximum) fail();
-	return value;
-}
+const { object, list, integer } = projectionValidators(fail);
 
 function requiredText(value: unknown, maximum: number, pattern?: RegExp) {
 	if (typeof value !== "string" || !value || value !== value.trim() || value.length > maximum)
@@ -81,12 +61,6 @@ function optionalText(value: unknown, maximum: number) {
 	if (value === null) return null;
 	if (typeof value !== "string" || value.length > maximum) fail();
 	return value;
-}
-
-function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
-	if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum)
-		fail();
-	return value as number;
 }
 
 function titleDerivedCanonicalUrl(title: string) {
@@ -225,7 +199,7 @@ function adaptConvexGallery(value: unknown) {
 	};
 }
 
-export function adaptConvexPortfolioList(value: unknown): PortfolioIndexGallery[] {
+function adaptConvexPortfolioList(value: unknown): PortfolioIndexGallery[] {
 	return list(value, GALLERY_MAX).map((value) => {
 		const row = object(value, ["title", "slug", "preview"]);
 		let preview: ReturnType<typeof derivative> | null = null;
@@ -249,20 +223,14 @@ export function adaptConvexPortfolioDetail(value: unknown): PortfolioDetail | nu
 }
 
 function createConvexReader(): ConvexReader {
-	function client(signal: AbortSignal) {
-		return new ConvexHttpClient(getConvexUrl(), {
-			logger: false,
-			fetch: (input, init) => fetch(input, { ...init, signal }),
-		});
-	}
 	return {
 		async listPublished(signal) {
-			return await client(signal).query(api.portfolioGalleries.listPublishedSummaries, {
+			return await convexReadClient(signal).query(api.portfolioGalleries.listPublishedSummaries, {
 				siteUrl: SITE_DOMAIN,
 			});
 		},
 		async getPublishedBySlug(slug, signal) {
-			return await client(signal).query(api.portfolioGalleries.getPublishedBySlug, {
+			return await convexReadClient(signal).query(api.portfolioGalleries.getPublishedBySlug, {
 				siteUrl: SITE_DOMAIN,
 				slug,
 			});
