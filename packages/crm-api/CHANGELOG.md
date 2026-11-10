@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.15.1
+
+### Patch Changes
+
+- 4df96ca: Share private-catalog fact projections without changing receipt identities, validation or transaction boundaries.
+
 ## 6.15.0
 
 ### Minor Changes
