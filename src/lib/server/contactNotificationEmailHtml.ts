@@ -1,6 +1,6 @@
 /** Pure, dependency-free HTML rendering for the public contact owner notification. */
 
-import { escapedLines, escapeHtml } from "$lib/server/emailHtml";
+import { escapedLines, escapeHtml } from "./emailHtml";
 
 export interface ContactOwnerNotificationFacts {
 	brand?: string;

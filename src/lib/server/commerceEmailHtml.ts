@@ -1,6 +1,6 @@
 /** Pure, dependency-free HTML rendering for automated commerce email. */
 
-import { escapedLines, escapeHtml } from "$lib/server/emailHtml";
+import { escapedLines, escapeHtml } from "./emailHtml";
 
 export interface CommerceEmailItem {
 	description: string;
