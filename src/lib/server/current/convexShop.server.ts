@@ -122,9 +122,6 @@ export function createConvexShop(dependencies: ConvexShopDependencies = {}) {
 			}
 			notFound("Print set not found");
 		},
-		async loadCollection(_slug: string): Promise<never> {
-			notFound("Print collection not found");
-		},
 	};
 }
 
