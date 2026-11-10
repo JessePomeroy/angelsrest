@@ -21,6 +21,7 @@ import { resolveCommerceEmailIdentity } from "$lib/server/commerceEmailIdentity.
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
+	isHubSite,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import type { LumaPrintsReconciliationClass } from "$lib/server/lumaprints";
@@ -335,7 +336,9 @@ export async function sendCustomerConfirmation(
 ) {
 	const identity = resolveCommerceEmailIdentity(notificationProfile, "");
 	const origin = commerceOrigin(notificationProfile);
-	const isDigital = fulfillmentType === "digital";
+	// Only the hub serves paid downloads from /checkout/success; tenant spokes keep the
+	// existing confirmation until they have a download page to link to.
+	const isDigital = fulfillmentType === "digital" && isHubSite(notificationProfile.siteUrl);
 	const orderReference = orderNumber ?? session.id;
 
 	const digitalSection = isDigital

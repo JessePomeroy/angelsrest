@@ -176,7 +176,8 @@ async function deliverPaidCheckout(
 	return { email: customer[0][0], order };
 }
 
-describe("customer confirmation uses the recorded order fulfillment", () => {
+// The first case pays for loading every Convex module on a cold transform.
+describe("customer confirmation uses the recorded order fulfillment", { timeout: 30_000 }, () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		// Binding schedules a 35-day reservation reconcile; keep it from firing mid-test.

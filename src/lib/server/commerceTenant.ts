@@ -190,7 +190,8 @@ function identityConflict(reason: string, meta: Record<string, unknown>): never 
 	throw error;
 }
 
-function isHubSite(siteUrl: string | undefined) {
+/** Whether a commerce site URL belongs to this hub rather than a tenant spoke. */
+export function isHubSite(siteUrl: string | undefined) {
 	if (!siteUrl) return false;
 	const normalized = normalizeCommerceTenantSiteUrl(siteUrl);
 	return normalized === SITE_DOMAIN || normalized === "localhost" || normalized === "127.0.0.1";
