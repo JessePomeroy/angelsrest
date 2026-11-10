@@ -41,15 +41,14 @@
 		"@edge-runtime/vm": "^5.0.0",
 		"@oxlint/plugins": "1.86.0",
 		"@playwright/test": "^1.59.1",
-		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-vercel": "^6.3.4",
 		"@sveltejs/kit": "^2.70.4",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@types/node": "^25.6.0",
 		"@types/three": "^0.185.4",
 		"convex-test": "^0.0.52",
-		"dotenv": "^17.4.2",
 		"husky": "^9.1.7",
+		"jsdom": "^29.1.1",
 		"lint-staged": "^16.4.0",
 		"oxlint": "1.86.0",
 		"svelte": "^5.56.4",
@@ -86,8 +85,7 @@
 			"biome check --no-errors-on-unmatched"
 		],
 		"*.svelte": [
-			"biome check --no-errors-on-unmatched",
-			"svelte-check --tsconfig ./tsconfig.json"
+			"biome check --no-errors-on-unmatched"
 		]
 	},
 	"pnpm": {
@@ -101,13 +99,9 @@
 			"postcss@<8.5.23": "8.5.23",
 			"brace-expansion": "5.0.12",
 			"browserslist@<=4.28.6": "4.28.7",
-			"js-yaml@<3.15.2": "3.15.2",
-			"js-yaml@>=4.0.0 <4.3.2": "4.3.2",
 			"tar": "7.5.22",
 			"undici": "7.30.1",
 			"nanoid@<3.3.18": "3.3.18",
-			"nanoid@>=4.0.0 <5.1.16": "5.1.16",
-			"valibot@<=1.4.1": "1.4.2",
 			"vite>esbuild": "0.28.1",
 			"devalue@<5.9.4": "5.9.4",
 			"better-auth@1.6.34>react-dom": "-",

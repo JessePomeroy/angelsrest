@@ -1,8 +1,6 @@
-// Switched from @sveltejs/adapter-auto to adapter-vercel directly so the
-// experimental.instrumentation.server flag (audit #50a — Sentry init)
-// passes SvelteKit's safety check, which refuses to enable instrumentation
-// under adapter-auto because it can't promise the target runtime supports it.
-// Vercel was the auto-detected target anyway, so behavior is unchanged.
+// Use adapter-vercel explicitly: SvelteKit only enables
+// experimental.instrumentation.server (audit #50a — Sentry init) with an
+// adapter that guarantees the target runtime supports it.
 import adapter from "@sveltejs/adapter-vercel";
 
 /** @type {import('@sveltejs/kit').Config} */
