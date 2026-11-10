@@ -14,6 +14,7 @@ import {
 	getCatalogPrintSourceIssuerSecret,
 	isBearerCredential,
 } from "$lib/server/runtimeConfig";
+import { isRecord } from "$lib/server/validation";
 
 const PATHS = {
 	checkout: "/commerce/catalog/checkout/resolve",
@@ -136,9 +137,6 @@ export class CatalogBoundaryError extends Error {
 }
 const rejected = (phase: CatalogBoundaryPhase = "envelope") =>
 	new CatalogBoundaryError("rejected", phase);
-function object(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 function exact(value: Record<string, unknown>, keys: string[]) {
 	return Object.keys(value).length === keys.length && keys.every((key) => key in value);
 }
@@ -146,7 +144,7 @@ function boundedString(value: unknown, maximum: number): value is string {
 	return typeof value === "string" && value.length > 0 && value.length <= maximum;
 }
 function parseDescriptor(value: unknown, maximumBytes: number): Descriptor | null {
-	if (!object(value)) return null;
+	if (!isRecord(value)) return null;
 	return boundedString(value.key, 1_024) &&
 		typeof value.hash === "string" &&
 		sha256.test(value.hash) &&
@@ -163,13 +161,13 @@ function positiveSourceDimension(value: unknown) {
 	);
 }
 export function isPrintSourceDescriptor(value: unknown): value is PrintSourceDescriptor {
-	if (!object(value) || (value.mime !== "image/jpeg" && value.mime !== "image/png")) {
+	if (!isRecord(value) || (value.mime !== "image/jpeg" && value.mime !== "image/png")) {
 		return false;
 	}
 	if (!parseDescriptor(value, PRINT_SOURCE_BYTES_MAX)) return false;
 	const dimensions = value.dimensions;
 	return (
-		object(dimensions) &&
+		isRecord(dimensions) &&
 		exact(dimensions, ["width", "height"]) &&
 		positiveSourceDimension(dimensions.width) &&
 		positiveSourceDimension(dimensions.height)
@@ -194,7 +192,7 @@ function nullableKey(value: unknown): value is string | null {
 
 function parseItem(value: unknown): CheckoutSnapshotItem | null {
 	if (
-		!object(value) ||
+		!isRecord(value) ||
 		!exact(value, ITEM_KEYS) ||
 		!boundedString(value.productKey, 128) ||
 		!boundedString(value.revisionId, 128) ||
@@ -223,7 +221,7 @@ function parseIdentity(
 	item: CheckoutSnapshotItem,
 ): PaidFulfillmentResolution["identity"] | null {
 	if (
-		!object(value) ||
+		!isRecord(value) ||
 		!exact(value, IDENTITY_KEYS) ||
 		value.productId !== item.productKey ||
 		value.revisionId !== item.revisionId ||
@@ -250,7 +248,7 @@ function parseFinish(value: unknown, item: CheckoutSnapshotItem): Finish | null 
 		return null;
 	}
 	if (
-		!object(value) ||
+		!isRecord(value) ||
 		!exact(value, FINISH_KEYS) ||
 		value.materialKey !== item.materialOptionKey ||
 		value.sizeKey !== item.sizeOptionKey ||
@@ -274,24 +272,24 @@ function parseFinish(value: unknown, item: CheckoutSnapshotItem): Finish | null 
 	)
 		throw rejected();
 	if (
-		!object(value.paper) ||
+		!isRecord(value.paper) ||
 		!exact(value.paper, ["name", "subcategoryId"]) ||
 		value.paper.name !== paper.name ||
 		value.paper.subcategoryId !== (canvas?.subcategoryId ?? paper.subcategoryId) ||
-		!object(value.size) ||
+		!isRecord(value.size) ||
 		!exact(value.size, ["label", "width", "height"]) ||
 		value.size.label !== size.label ||
 		value.size.width !== size.width ||
 		value.size.height !== size.height ||
 		!Number.isSafeInteger(value.size.width) ||
 		!Number.isSafeInteger(value.size.height) ||
-		!object(value.border) ||
+		!isRecord(value.border) ||
 		!exact(value.border, ["inches"]) ||
 		typeof value.border.inches !== "number" ||
 		!Number.isFinite(value.border.inches) ||
 		value.border.inches < 0 ||
 		value.border.inches !== border.inches ||
-		!object(value.frame) ||
+		!isRecord(value.frame) ||
 		!exact(value.frame, ["subcategoryId"]) ||
 		!Number.isSafeInteger(value.frame.subcategoryId) ||
 		value.frame.subcategoryId !== frame.subcategoryId
@@ -300,7 +298,7 @@ function parseFinish(value: unknown, item: CheckoutSnapshotItem): Finish | null 
 	if (canvas === null) {
 		if (value.canvas !== null) throw rejected();
 	} else if (
-		!object(value.canvas) ||
+		!isRecord(value.canvas) ||
 		!exact(value.canvas, ["color", "thickness", "subcategoryId", "wrapOptionId", "wrapHex"]) ||
 		value.canvas.color !== canvas.color ||
 		value.canvas.thickness !== canvas.thickness ||
@@ -332,7 +330,7 @@ function parseCommerce(
 	item: CheckoutSnapshotItem,
 ): PaidFulfillmentResolution["commerce"] | null {
 	if (
-		!object(value) ||
+		!isRecord(value) ||
 		!exact(value, COMMERCE_KEYS) ||
 		value.currency !== "usd" ||
 		!Number.isSafeInteger(value.amountCents) ||
@@ -347,7 +345,7 @@ function parseCommerce(
 }
 
 function parseCurrent(value: unknown): PaidFulfillmentResolution["current"] | null {
-	if (!object(value) || !exact(value, CURRENT_KEYS)) return null;
+	if (!isRecord(value) || !exact(value, CURRENT_KEYS)) return null;
 	if (
 		typeof value.kindEnabled !== "boolean" ||
 		typeof value.publishedRevision !== "boolean" ||
@@ -368,7 +366,7 @@ function parseCurrent(value: unknown): PaidFulfillmentResolution["current"] | nu
 function parsePrintSource(
 	value: unknown,
 ): (PrintSourceDescriptor & { memberKey: string | null; relationKey: string }) | null {
-	if (!object(value) || !exact(value, SOURCE_KEYS)) return null;
+	if (!isRecord(value) || !exact(value, SOURCE_KEYS)) return null;
 	const memberKey = value.memberKey;
 	const relationKey = value.relationKey;
 	if (
@@ -486,7 +484,7 @@ function isCommerceResolverPurpose(purpose: keyof typeof PATHS) {
 async function isExactResolverRejection(response: Response) {
 	try {
 		const body = await readJson(response);
-		return object(body) && exact(body, ["error"]) && body.error === "rejected";
+		return isRecord(body) && exact(body, ["error"]) && body.error === "rejected";
 	} catch {
 		// Status bodies are untrusted boundary data. Keep malformed, missing, and
 		// over-limit details out of both classification and surfaced errors.
@@ -524,7 +522,7 @@ async function post(config: Config, purpose: keyof typeof PATHS, body: unknown) 
 
 function parsePaid(value: unknown, purpose: "paid_fulfillment" | "paid_download") {
 	if (
-		!object(value) ||
+		!isRecord(value) ||
 		!exact(value, PAID_KEYS) ||
 		value.version !== 1 ||
 		value.purpose !== purpose ||
@@ -538,7 +536,7 @@ function parsePaid(value: unknown, purpose: "paid_fulfillment" | "paid_download"
 	const identity = parseIdentity(value.identity, item);
 	const commerce = parseCommerce(value.commerce, item);
 	const current = parseCurrent(value.current);
-	if (!identity || !commerce || !current || !object(value.descriptor)) throw rejected();
+	if (!identity || !commerce || !current || !isRecord(value.descriptor)) throw rejected();
 	const rawDescriptor = value.descriptor;
 	let descriptor: PaidFulfillmentResolution["descriptor"];
 	if (rawDescriptor.kind === "print_sources") {
@@ -606,7 +604,7 @@ function configured(purpose: CommercePurpose | IssuerPurpose): Config {
 }
 async function resolve(purpose: CommercePurpose, input: object, config = configured(purpose)) {
 	const value = await post(config, purpose, { version: 1, ...input });
-	if (!object(value) || value.version !== 1 || value.purpose !== purpose) throw rejected();
+	if (!isRecord(value) || value.version !== 1 || value.purpose !== purpose) throw rejected();
 	return value;
 }
 export async function resolveCatalogCheckout(
@@ -704,7 +702,7 @@ async function issue(purpose: IssuerPurpose, value: Descriptor, config = configu
 		mime: value.mime,
 	});
 	if (
-		!object(result) ||
+		!isRecord(result) ||
 		!exact(result, ["version", "url", "expiresAt"]) ||
 		result.version !== 1 ||
 		typeof result.url !== "string" ||
@@ -830,12 +828,12 @@ export async function storePrintArtifact(
 			);
 		const stored = await readJson(response);
 		if (
-			!object(stored) ||
+			!isRecord(stored) ||
 			stored.status !== "stored_unverified" ||
 			(stored.replayed === false
 				? stored.privateObjectKey !== key || stored.assetKey !== assetKey
 				: stored.replayed !== true ||
-					!object(stored.asset) ||
+					!isRecord(stored.asset) ||
 					stored.asset.privateObjectKey !== key ||
 					stored.asset.sha256 !== descriptor.hash ||
 					stored.asset.sizeBytes !== descriptor.bytes ||
@@ -878,16 +876,16 @@ export async function storePrintArtifact(
 	}
 	const value = await readJson(response);
 	const stored =
-		object(value) &&
+		isRecord(value) &&
 		value.status === "stored_unverified" &&
-		object(value.asset) &&
+		isRecord(value.asset) &&
 		value.asset.privateObjectKey === key &&
 		value.asset.sha256 === descriptor.hash &&
 		value.asset.sizeBytes === descriptor.bytes &&
 		value.asset.contentType === descriptor.mime;
 	if (!stored) {
 		if (
-			!object(value) ||
+			!isRecord(value) ||
 			!exact(value, [
 				"status",
 				"kind",

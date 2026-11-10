@@ -1,5 +1,7 @@
 /** Pure, dependency-free HTML rendering for automated commerce email. */
 
+import { escapedLines, escapeHtml } from "$lib/server/emailHtml";
+
 export interface CommerceEmailItem {
 	description: string;
 	quantity: string;
@@ -134,22 +136,6 @@ interface CommerceEmailDocument {
 	summary?: readonly SummaryFact[];
 	body: string;
 	footer: string;
-}
-
-const HTML_ESCAPE: Record<string, string> = {
-	"&": "&amp;",
-	"<": "&lt;",
-	">": "&gt;",
-	'"': "&quot;",
-	"'": "&#39;",
-};
-
-function escapeHtml(value: string) {
-	return value.replace(/[&<>"']/g, (character) => HTML_ESCAPE[character] ?? character);
-}
-
-function escapedLines(value: string) {
-	return value.split(/\r?\n/).map(escapeHtml).join("<br>");
 }
 
 function safeHref(value: string) {

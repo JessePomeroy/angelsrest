@@ -1,13 +1,13 @@
 import { getAvailableFrames, getBorder, isCanvasPaper } from "@jessepomeroy/print-catalog";
-import { replaceState } from "$app/navigation";
-import { page } from "$app/state";
 import {
 	getAvailablePrintPapers,
 	getAvailablePrintSizes,
 	normalizePrintFinishSelection,
 	type ResolvePrintConfigurationInput,
 	resolvePrintConfiguration,
-} from "./printConfigurator";
+} from "@jessepomeroy/print-catalog/configurator";
+import { replaceState } from "$app/navigation";
+import { page } from "$app/state";
 
 type PrintSelectionSource = Pick<
 	ResolvePrintConfigurationInput,

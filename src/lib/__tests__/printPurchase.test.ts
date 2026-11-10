@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
 import {
 	type ResolvePrintConfigurationInput,
 	resolvePrintConfiguration,
-} from "../shop/printConfigurator";
+} from "@jessepomeroy/print-catalog/configurator";
+import { describe, expect, it } from "vitest";
 import { printConfigurationCartFields } from "../shop/printPurchase";
 
 function resolve(overrides: Partial<ResolvePrintConfigurationInput> = {}) {

@@ -39,7 +39,7 @@ import {
 } from "$lib/server/stripeConnect";
 import { parseCheckoutFinancialIntent } from "../../../packages/crm-api/convex/helpers/checkoutFinancialSnapshot";
 
-export const HANDLE_CHECKOUT_MODE = "handle-v2";
+const HANDLE_CHECKOUT_MODE = "handle-v2";
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ACCOUNT_ID = /^acct_[A-Za-z0-9]{16,64}$/;
 const SESSION_LIFETIME_SECONDS = 23 * 60 * 60 + 55 * 60;
@@ -291,7 +291,7 @@ export async function createHandleCheckoutSession({
 	});
 }
 
-export async function createAdmittedOrderCheckoutSession({
+async function createAdmittedOrderCheckoutSession({
 	identity,
 	tenantId,
 	site,

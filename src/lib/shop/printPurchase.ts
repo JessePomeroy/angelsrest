@@ -1,5 +1,5 @@
+import type { ResolvedPrintConfiguration } from "@jessepomeroy/print-catalog/configurator";
 import type { CartItem } from "./cart";
-import type { ResolvedPrintConfiguration } from "./printConfigurator";
 
 /** Snapshot only the resolved selection; each page supplies its own product and image identity. */
 export function printConfigurationCartFields(

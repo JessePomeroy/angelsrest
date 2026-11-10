@@ -12,9 +12,7 @@ export function trimString(
 	return String(value).trim().slice(0, maxLength);
 }
 
-export function requireString(value: unknown, fieldName: string, maxLength = 255): string {
-	if (typeof value !== "string" || !value.trim()) {
-		throw new Error(`${fieldName} is required`);
-	}
-	return value.trim().slice(0, maxLength);
+/** A non-null, non-array object whose properties can be inspected. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
 }

@@ -1,7 +1,6 @@
 import { env } from "$env/dynamic/private";
 
-export const ORDER_PRODUCERS_STATE_NAME = "ORDER_PRODUCERS_STATE";
-export const ORDER_PRODUCERS_CLOSED_MESSAGE = "Order producers are closed";
+const ORDER_PRODUCERS_CLOSED_MESSAGE = "Order producers are closed";
 
 export type OrderProducersState = "closed" | "open";
 

@@ -14,7 +14,7 @@ import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 export const isLumaPrintsSetupEnabled = () => env.LUMAPRINTS_CLIENT_SETUP_ENABLED === "true";
 
-export class LumaPrintsSetupError extends Error {
+class LumaPrintsSetupError extends Error {
 	constructor(
 		readonly status: 400 | 403 | 409 | 413 | 503,
 		message: string,

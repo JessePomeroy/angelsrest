@@ -83,9 +83,7 @@ function validateCheckoutRoles(
 	return { bridge, reservation };
 }
 
-export function parseCheckoutRoleCredentialFingerprints(
-	raw: string,
-): CheckoutRoleCredentialFingerprints {
+function parseCheckoutRoleCredentialFingerprints(raw: string): CheckoutRoleCredentialFingerprints {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
@@ -115,7 +113,7 @@ export function checkoutCredentialFingerprint(secret: string) {
 	return createHash("sha256").update(secret).digest("hex");
 }
 
-export function parseCheckoutSnapshotReservationRegistry(rawRegistry: string | undefined) {
+function parseCheckoutSnapshotReservationRegistry(rawRegistry: string | undefined) {
 	if (!rawRegistry || Buffer.byteLength(rawRegistry, "utf8") > MAX_REGISTRY_BYTES) {
 		throw new Error("Checkout reservation credentials are unavailable");
 	}

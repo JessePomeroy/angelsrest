@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
-import type { ResolvedPrintConfiguration } from "$lib/shop/printConfigurator";
+import type { ResolvedPrintConfiguration } from "@jessepomeroy/print-catalog/configurator";
 import StickyMobileBar from "./StickyMobileBar.svelte";
 
 let {

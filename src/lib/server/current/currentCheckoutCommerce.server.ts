@@ -12,6 +12,7 @@ import {
 	type CurrentCheckoutCommercePhase,
 } from "$lib/server/checkoutFailures";
 import { getConvexUrl } from "$lib/server/runtimeConfig";
+import { isRecord } from "$lib/server/validation";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KINDS = new Set(
@@ -19,9 +20,6 @@ const KINDS = new Set(
 );
 const PRIMARY_ROLES = { print: "primary", print_set: "cover" } as const;
 const CANVAS_KEYS = "color thickness subcategoryId wrapOptionId wrapHex";
-
-export type { CurrentCheckoutCommercePhase } from "$lib/server/checkoutFailures";
-export { CurrentCheckoutCommerceError } from "$lib/server/checkoutFailures";
 
 export interface CurrentCheckoutCommerceDependencies {
 	query?: (slug: string, signal: AbortSignal) => Promise<unknown>;
@@ -41,12 +39,8 @@ function invalidAuthority(phase: CurrentCheckoutCommercePhase): never {
 	throw new CurrentCheckoutCommerceError("invalid_authority", phase);
 }
 
-function object(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function required(value: unknown, keys: string, phase: CurrentCheckoutCommercePhase = "authority") {
-	if (!object(value)) invalidAuthority(phase);
+	if (!isRecord(value)) invalidAuthority(phase);
 	const list = keys.split(" ");
 	if (Object.keys(value).length !== list.length || list.some((key) => !(key in value))) {
 		invalidAuthority(phase);
@@ -85,7 +79,7 @@ const selectionKey = (value: unknown, phase: CurrentCheckoutCommercePhase) =>
 
 function discover(value: unknown, selection: CheckoutSelection) {
 	if (value === null) selectionChanged("query");
-	if (!object(value) || !Array.isArray(value.variants)) invalidAuthority("graph");
+	if (!isRecord(value) || !Array.isArray(value.variants)) invalidAuthority("graph");
 	const slug = selectionString(selection.productId, 200, "query");
 	const kind = value.productKind;
 	if (
@@ -122,7 +116,7 @@ function discover(value: unknown, selection: CheckoutSelection) {
 		}
 	}
 	const variants = value.variants.map((variant) => {
-		if (!object(variant)) invalidAuthority("graph");
+		if (!isRecord(variant)) invalidAuthority("graph");
 		const key = trustedString(variant.key, 128, "graph");
 		if (!isPrint) {
 			if (variant.materialOption !== null || variant.sizeOption !== null) {
@@ -130,7 +124,7 @@ function discover(value: unknown, selection: CheckoutSelection) {
 			}
 			return { key, material: null, size: null };
 		}
-		if (!object(variant.materialOption) || !object(variant.sizeOption)) {
+		if (!isRecord(variant.materialOption) || !isRecord(variant.sizeOption)) {
 			invalidAuthority("graph");
 		}
 		return {

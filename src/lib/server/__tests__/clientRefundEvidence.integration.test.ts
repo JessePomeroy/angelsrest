@@ -6,8 +6,8 @@ import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../../../packages/crm-api/convex/_generated/api";
 import schema from "../../../../packages/crm-api/convex/schema";
+import { STRIPE_API_VERSION } from "../../../../packages/crm-api/src/stripeContract";
 import { reconcileSucceededManualRefund } from "../recovery/manualRefundReconciliation.server";
-import { STRIPE_API_VERSION } from "../stripeApiVersion";
 
 const env = vi.hoisted(() => ({
 	WEBHOOK_SECRET: "client-refund-integration-0123456789abcdef",
