@@ -9,6 +9,7 @@
 
 import type { Resend } from "resend";
 import type Stripe from "stripe";
+import type { Doc } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import { ADMIN_EMAIL } from "$lib/config/site";
 import {
@@ -318,6 +319,7 @@ export async function sendCustomerConfirmation(
 		shippingDetails,
 		lineItems,
 		orderNumber,
+		fulfillmentType,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
 		session: OrderEmailSession;
@@ -325,13 +327,15 @@ export async function sendCustomerConfirmation(
 		shippingDetails: ShippingDetails;
 		lineItems: OrderEmailLineItem[];
 		orderNumber?: string;
+		/** The fulfillment recorded on the Convex order, not Checkout metadata. */
+		fulfillmentType: Doc<"orders">["fulfillmentType"];
 		notificationProfile?: CommerceNotificationProfile;
 	},
 	idempotencyKey?: string,
 ) {
 	const identity = resolveCommerceEmailIdentity(notificationProfile, "");
 	const origin = commerceOrigin(notificationProfile);
-	const isDigital = session.metadata?.isDigital === "true";
+	const isDigital = fulfillmentType === "digital";
 	const orderReference = orderNumber ?? session.id;
 
 	const digitalSection = isDigital

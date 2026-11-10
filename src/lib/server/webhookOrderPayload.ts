@@ -68,7 +68,9 @@ export function buildConvexOrderCreatePayload({
 	const rawPaymentIntent = session.payment_intent;
 	const stripePaymentIntentId =
 		typeof rawPaymentIntent === "string" ? rawPaymentIntent : rawPaymentIntent?.id;
-	const isDigital = session.metadata?.isDigital === "true";
+	// Snapshot orders take fulfillment from the durable Convex snapshot, never from metadata.
+	const isDigital =
+		checkoutSnapshotInput.protocol === "legacy" && session.metadata?.isDigital === "true";
 	const printInputVersion = session.metadata?.printInputVersion;
 	if (printInputVersion !== undefined && printInputVersion !== "1") {
 		throw new CheckoutSnapshotProtocolError("Unsupported frozen print protocol");

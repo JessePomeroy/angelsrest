@@ -105,6 +105,7 @@ describe("webhook customer emails", () => {
 				shippingDetails,
 				lineItems,
 				orderNumber: "ORD-001",
+				fulfillmentType: "lumaprints",
 			},
 			"order-receipt:customer:order-001",
 		);
@@ -182,6 +183,7 @@ https://angelsrest.online`);
 			shippingDetails,
 			lineItems: [],
 			orderNumber: "ORD-002",
+			fulfillmentType: "lumaprints",
 			notificationProfile: {
 				siteName: "Reflecting Pool",
 				siteUrl: "zippymiggy.com",
@@ -213,10 +215,11 @@ https://angelsrest.online`);
 		const mockResend = resend();
 
 		await sendCustomerConfirmation(mockResend as any, {
-			session: { ...baseSession, metadata: { isDigital: "true" } },
+			session: baseSession,
 			customerEmail: "buyer@example.com",
 			shippingDetails: null,
 			lineItems,
+			fulfillmentType: "digital",
 			notificationProfile: {
 				siteName: "Reflecting Pool",
 				siteUrl: "zippymiggy.com",
@@ -261,6 +264,33 @@ https://zippymiggy.com`);
 		expect(payload.html).not.toContain("View order status");
 	});
 
+	it.each([
+		{ fulfillmentType: "lumaprints", isDigital: "true", delivery: "SHIPPING ADDRESS" },
+		{ fulfillmentType: "self", isDigital: "true", delivery: "SHIPPING ADDRESS" },
+		{ fulfillmentType: "digital", isDigital: "false", delivery: "DOWNLOAD YOUR PURCHASE" },
+	] as const)("ignores isDigital=$isDigital metadata for a $fulfillmentType order", async ({
+		fulfillmentType,
+		isDigital,
+		delivery,
+	}) => {
+		const mockResend = resend();
+
+		await sendCustomerConfirmation(mockResend as any, {
+			session: { ...baseSession, metadata: { isDigital } },
+			customerEmail: "buyer@example.com",
+			shippingDetails,
+			lineItems,
+			orderNumber: "ORD-004",
+			fulfillmentType,
+		});
+
+		const text = mockResend.emails.send.mock.calls[0]?.[0].text;
+		expect(text).toContain(delivery);
+		expect(text).not.toContain(
+			delivery === "SHIPPING ADDRESS" ? "DOWNLOAD YOUR PURCHASE" : "SHIPPING ADDRESS",
+		);
+	});
+
 	it("still propagates a thrown confirmation delivery failure after one send attempt", async () => {
 		const deliveryFailure = new Error("Resend transport unavailable");
 		const mockResend = {
@@ -274,6 +304,7 @@ https://zippymiggy.com`);
 				shippingDetails,
 				lineItems,
 				orderNumber: "ORD-003",
+				fulfillmentType: "lumaprints",
 			}),
 		).rejects.toBe(deliveryFailure);
 		expect(mockResend.emails.send).toHaveBeenCalledOnce();
@@ -293,6 +324,7 @@ https://zippymiggy.com`);
 				shippingDetails,
 				lineItems,
 				orderNumber: "ORD-003",
+				fulfillmentType: "lumaprints",
 			}),
 		).rejects.toThrow("Resend rejected confirmation");
 		expect(mockResend.emails.send).toHaveBeenCalledOnce();
@@ -611,6 +643,7 @@ https://zippymiggy.com`);
 						shippingDetails,
 						lineItems,
 						orderNumber: "ORD-011",
+						fulfillmentType: "lumaprints",
 					}),
 			],
 			[

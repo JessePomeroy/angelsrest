@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { describe, expect, it } from "vitest";
+import type { CheckoutSnapshotInput } from "$lib/server/checkoutSnapshotConsumer";
 import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 
 function makeSession(overrides?: Partial<Stripe.Checkout.Session>): Stripe.Checkout.Session {
@@ -187,6 +188,44 @@ describe("buildConvexOrderCreatePayload", () => {
 		expect(payload.stripePaymentIntentId).toBe("pi_expanded_123");
 		expect(payload.fulfillmentType).toBe("digital");
 		expect(payload.shippingAddress).toBeUndefined();
+	});
+
+	it.each([
+		{
+			protocol: "handle-v2",
+			reservation: { version: 2, handle: "123e4567-e89b-42d3-a456-426614174000" },
+		},
+		{
+			protocol: "inline-v1",
+			snapshot: {
+				schemaVersion: 1,
+				catalogProvider: "convex",
+				items: [
+					{
+						productKey: "product",
+						revisionId: "revision",
+						productKind: "print",
+						variantKey: null,
+						materialOptionKey: null,
+						sizeOptionKey: null,
+						borderOptionKey: null,
+						frameOptionKey: null,
+					},
+				],
+			},
+		},
+		{ protocol: "existing-order" },
+	] satisfies CheckoutSnapshotInput[])("leaves $protocol fulfillment to the durable snapshot instead of isDigital metadata", (checkoutSnapshotInput) => {
+		const payload = buildConvexOrderCreatePayload({
+			session: makeSession({ metadata: { isDigital: "true" } }),
+			shippingDetails: null,
+			lineItems: [makeLineItem()],
+			siteUrl: "angelsrest.online",
+			webhookSecret: "secret",
+			checkoutSnapshotInput,
+		});
+
+		expect(payload.fulfillmentType).toBe("self");
 	});
 
 	it("persists connected-account routing for delayed Stripe fee reads", () => {
