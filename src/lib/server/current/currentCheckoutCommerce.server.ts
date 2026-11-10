@@ -23,12 +23,6 @@ const CANVAS_KEYS = "color thickness subcategoryId wrapOptionId wrapHex";
 export type { CurrentCheckoutCommercePhase } from "$lib/server/checkoutFailures";
 export { CurrentCheckoutCommerceError } from "$lib/server/checkoutFailures";
 
-export class CurrentCheckoutCommerceDiagnosticError extends Error {
-	constructor(readonly phase: CurrentCheckoutCommercePhase) {
-		super("Current checkout catalog authority failed");
-	}
-}
-
 export interface CurrentCheckoutCommerceDependencies {
 	query?: (slug: string, signal: AbortSignal) => Promise<unknown>;
 	resolve?: (item: CheckoutSnapshotItem, signal: AbortSignal) => Promise<unknown>;
@@ -282,21 +276,12 @@ function client(signal: AbortSignal) {
 }
 
 async function authorityStep<T>(
-	phase: CurrentCheckoutCommercePhase,
-	diagnose: boolean,
 	operation: () => T | Promise<T>,
 	classify: (error: unknown) => never,
 ) {
 	try {
 		return await operation();
 	} catch (error) {
-		if (diagnose) {
-			throw new CurrentCheckoutCommerceDiagnosticError(
-				error instanceof CurrentCheckoutCommerceError || error instanceof CatalogBoundaryError
-					? error.phase
-					: phase,
-			);
-		}
 		if (error instanceof CurrentCheckoutCommerceError) throw error;
 		return classify(error);
 	}
@@ -341,7 +326,6 @@ async function resolveItems(
 	selections: readonly CheckoutSelection[],
 	signal: AbortSignal,
 	dependencies: CurrentCheckoutCommerceDependencies,
-	diagnose = false,
 ) {
 	const query =
 		dependencies.query ??
@@ -354,8 +338,6 @@ async function resolveItems(
 	return Promise.all(
 		selections.map(async (selection) => {
 			const graph = await authorityStep(
-				"query",
-				diagnose,
 				() =>
 					boundedOperation(signal, "query", () =>
 						query(selectionString(selection.productId, 200, "query"), signal),
@@ -363,20 +345,14 @@ async function resolveItems(
 				() => unavailable("query"),
 			);
 			const found = await authorityStep(
-				"graph",
-				diagnose,
 				() => discover(graph, selection),
 				() => invalidAuthority("graph"),
 			);
 			const resolved = await authorityStep(
-				"resolver",
-				diagnose,
 				() => boundedOperation(signal, "resolver", () => resolve(found.item, signal)),
 				resolverFailure,
 			);
 			return authorityStep(
-				"authority",
-				diagnose,
 				() => authority(resolved, found.item, found.slug),
 				() => invalidAuthority("authority"),
 			);
@@ -397,15 +373,5 @@ export async function resolveCurrentCheckoutCommerce(
 		dependencies.signal ?? AbortSignal.timeout(5_000),
 		dependencies,
 	);
-	return { provider: "convex", items };
-}
-
-/** Legacy parity diagnostics; never imported by current checkout routes. */
-export async function resolveCurrentCheckoutCommerceForComparison(
-	selections: readonly CheckoutSelection[],
-	signal: AbortSignal,
-	dependencies: CurrentCheckoutCommerceDependencies = {},
-): Promise<{ provider: "convex"; items: ResolvedCheckoutItem[] }> {
-	const items = await resolveItems(selections, signal, dependencies, true);
 	return { provider: "convex", items };
 }
