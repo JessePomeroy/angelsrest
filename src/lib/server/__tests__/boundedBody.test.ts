@@ -64,6 +64,15 @@ describe("readBoundedBytes", () => {
 		await expect(readBoundedBytes(stream, 10)).resolves.toEqual({ status: "too_large" });
 	});
 
+	test("does not wait for a cancellation that never settles", async () => {
+		const { stream, cancel } = chunked(
+			[new Uint8Array(11)],
+			vi.fn(() => new Promise<void>(() => {})),
+		);
+		await expect(readBoundedBytes(stream, 10)).resolves.toEqual({ status: "too_large" });
+		expect(cancel).toHaveBeenCalledOnce();
+	});
+
 	test("propagates stream read errors and releases the reader", async () => {
 		const stream = new ReadableStream<Uint8Array>({
 			pull(controller) {

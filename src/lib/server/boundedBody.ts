@@ -6,7 +6,8 @@ export type BoundedBytes =
 /**
  * Read a request or response body incrementally, stopping as soon as the
  * cumulative byte count exceeds `limit`. Overflow cancels the stream before any
- * aggregate allocation; cancellation failures never replace the size result.
+ * aggregate allocation without awaiting it; cancellation never delays or replaces
+ * the size result.
  * Stream read errors propagate so each caller keeps its own failure mapping.
  */
 export async function readBoundedBytes(
@@ -23,11 +24,8 @@ export async function readBoundedBytes(
 			if (done) break;
 			total += value.byteLength;
 			if (total > limit) {
-				try {
-					await reader.cancel();
-				} catch {
-					// Cancellation is best-effort cleanup; keep the size failure.
-				}
+				// Best-effort cleanup: never wait on, or fail because of, a slow cancel.
+				void reader.cancel().catch(() => {});
 				return { status: "too_large" };
 			}
 			chunks.push(value);
