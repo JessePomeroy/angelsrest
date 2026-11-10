@@ -9,11 +9,15 @@ import type {
 } from "./catalogPrivateAssetReceiptContract";
 import {
 	privateCatalogRegistrationTarget,
+	canonicalPrivateCatalogFacts,
+	canonicalPrivateCatalogProvenance,
 	validateCatalogPrivateInspectionReceiptSet,
 	validateCatalogPrivateStorageReceiptSet,
 } from "./catalogPrivateAssetReceiptValidation";
 import {
 	type PaidDigitalFileAsset,
+	privatePrintSourceAssetValue,
+	paidDigitalFileAssetValue,
 	type PrivatePrintSourceAsset,
 	validatePaidDigitalFileAsset,
 	validatePrivatePrintSourceAsset,
@@ -69,54 +73,7 @@ function requireVerifiedCoordinationAudit(coordination: VerifiedCoordination) {
 	) throw new Error("Private catalog verified coordination audit is corrupt");
 }
 
-function printAssetValue(asset: Doc<"catalogPrintSourceAssets">): PrivatePrintSourceAsset {
-	return {
-		siteUrl: asset.siteUrl,
-		assetKey: asset.assetKey,
-		privateObjectKey: asset.privateObjectKey,
-		status: asset.status,
-		originalFilename: asset.originalFilename,
-		mimeType: asset.mimeType,
-		sizeBytes: asset.sizeBytes,
-		widthPixels: asset.widthPixels,
-		heightPixels: asset.heightPixels,
-		sha256: asset.sha256,
-		provenance: asset.provenance,
-		createdAt: asset.createdAt,
-		createdBy: asset.createdBy,
-		verifiedAt: asset.verifiedAt,
-		verifiedBy: asset.verifiedBy,
-	};
-}
 
-function paidAssetValue(asset: Doc<"catalogDigitalFileAssets">): PaidDigitalFileAsset {
-	return {
-		siteUrl: asset.siteUrl,
-		assetKey: asset.assetKey,
-		privateObjectKey: asset.privateObjectKey,
-		status: asset.status,
-		originalFilename: asset.originalFilename,
-		mimeType: asset.mimeType,
-		sizeBytes: asset.sizeBytes,
-		sha256: asset.sha256,
-		...(asset.version === undefined ? {} : { version: asset.version }),
-		provenance: asset.provenance,
-		createdAt: asset.createdAt,
-		createdBy: asset.createdBy,
-		verifiedAt: asset.verifiedAt,
-		verifiedBy: asset.verifiedBy,
-	};
-}
-
-function canonicalProvenance(provenance: CatalogPrivateAssetFacts["provenance"]) {
-	return provenance.provider === "sanity"
-		? {
-				provider: provenance.provider,
-				sourceId: provenance.sourceId,
-				sourceRevision: provenance.sourceRevision,
-			}
-		: { provider: provenance.provider, sourceId: provenance.sourceId };
-}
 
 function canonicalAsset(asset: PrivatePrintSourceAsset | PaidDigitalFileAsset) {
 	return {
@@ -131,27 +88,11 @@ function canonicalAsset(asset: PrivatePrintSourceAsset | PaidDigitalFileAsset) {
 			? { version: asset.version ?? null }
 			: { widthPixels: asset.widthPixels, heightPixels: asset.heightPixels }),
 		sha256: asset.sha256,
-		provenance: canonicalProvenance(asset.provenance),
+		provenance: canonicalPrivateCatalogProvenance(asset.provenance),
 		createdAt: asset.createdAt,
 		createdBy: asset.createdBy,
 		verifiedAt: asset.verifiedAt,
 		verifiedBy: asset.verifiedBy,
-	};
-}
-
-function canonicalImmutableFacts(facts: CatalogPrivateAssetFacts) {
-	return {
-		kind: facts.kind,
-		assetKey: facts.assetKey,
-		privateObjectKey: facts.privateObjectKey,
-		originalFilename: facts.originalFilename,
-		mimeType: facts.mimeType,
-		sizeBytes: facts.sizeBytes,
-		...(facts.kind === "print_source"
-			? { widthPixels: facts.widthPixels, heightPixels: facts.heightPixels }
-			: { version: facts.version ?? null }),
-		sha256: facts.sha256,
-		provenance: canonicalProvenance(facts.provenance),
 	};
 }
 
@@ -163,8 +104,8 @@ function sameAsset(
 }
 
 function sameImmutableFacts(left: CatalogPrivateAssetFacts, right: CatalogPrivateAssetFacts) {
-	return JSON.stringify(canonicalImmutableFacts(left))
-		=== JSON.stringify(canonicalImmutableFacts(right));
+	return JSON.stringify(canonicalPrivateCatalogFacts(left))
+		=== JSON.stringify(canonicalPrivateCatalogFacts(right));
 }
 
 async function authorityByKey(
@@ -398,7 +339,7 @@ async function requireClassicTarget(
 			|| expected.kind !== "print_source") {
 			throw new Error("Private catalog verified print source is missing or corrupt");
 		}
-		const value = printAssetValue(row);
+		const value = privatePrintSourceAssetValue(row);
 		validatePrivatePrintSourceAsset(value);
 		if (!sameAsset(value, expected.asset)) {
 			throw new Error("Private catalog verified print source has drifted");
@@ -414,7 +355,7 @@ async function requireClassicTarget(
 			|| expected.kind !== "paid_digital_file") {
 			throw new Error("Private catalog verified paid file is missing or corrupt");
 		}
-		const value = paidAssetValue(row);
+		const value = paidDigitalFileAssetValue(row);
 		validatePaidDigitalFileAsset(value);
 		if (!sameAsset(value, expected.asset)) {
 			throw new Error("Private catalog verified paid file has drifted");

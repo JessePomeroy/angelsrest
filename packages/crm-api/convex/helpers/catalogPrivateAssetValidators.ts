@@ -67,6 +67,46 @@ export type PrivateCatalogAssetProvenance = Infer<typeof privateCatalogAssetProv
 export type PrivatePrintSourceAsset = Infer<typeof privatePrintSourceAssetValidator>;
 export type PaidDigitalFileAsset = Infer<typeof paidDigitalFileAssetValidator>;
 
+/** Strip stored metadata before validating the closed asset contract. */
+export function privatePrintSourceAssetValue(asset: PrivatePrintSourceAsset): PrivatePrintSourceAsset {
+	return {
+		siteUrl: asset.siteUrl,
+		assetKey: asset.assetKey,
+		privateObjectKey: asset.privateObjectKey,
+		status: asset.status,
+		originalFilename: asset.originalFilename,
+		mimeType: asset.mimeType,
+		sizeBytes: asset.sizeBytes,
+		widthPixels: asset.widthPixels,
+		heightPixels: asset.heightPixels,
+		sha256: asset.sha256,
+		provenance: asset.provenance,
+		createdAt: asset.createdAt,
+		createdBy: asset.createdBy,
+		verifiedAt: asset.verifiedAt,
+		verifiedBy: asset.verifiedBy,
+	};
+}
+
+export function paidDigitalFileAssetValue(asset: PaidDigitalFileAsset): PaidDigitalFileAsset {
+	return {
+		siteUrl: asset.siteUrl,
+		assetKey: asset.assetKey,
+		privateObjectKey: asset.privateObjectKey,
+		status: asset.status,
+		originalFilename: asset.originalFilename,
+		mimeType: asset.mimeType,
+		sizeBytes: asset.sizeBytes,
+		sha256: asset.sha256,
+		...(asset.version === undefined ? {} : { version: asset.version }),
+		provenance: asset.provenance,
+		createdAt: asset.createdAt,
+		createdBy: asset.createdBy,
+		verifiedAt: asset.verifiedAt,
+		verifiedBy: asset.verifiedBy,
+	};
+}
+
 export const PRIVATE_CATALOG_ASSET_LIMITS = {
 	siteUrl: 253,
 	assetKey: 160,

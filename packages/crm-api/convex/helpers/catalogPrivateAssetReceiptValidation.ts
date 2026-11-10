@@ -65,7 +65,7 @@ function compareFacts(left: CatalogPrivateAssetFacts, right: CatalogPrivateAsset
 		|| compareOrdinal(left.assetKey, right.assetKey);
 }
 
-function canonicalProvenance(provenance: CatalogPrivateAssetFacts["provenance"]) {
+export function canonicalPrivateCatalogProvenance(provenance: CatalogPrivateAssetFacts["provenance"]) {
 	return provenance.provider === "sanity"
 		? {
 				provider: provenance.provider,
@@ -75,7 +75,7 @@ function canonicalProvenance(provenance: CatalogPrivateAssetFacts["provenance"])
 		: { provider: provenance.provider, sourceId: provenance.sourceId };
 }
 
-function canonicalFacts(facts: CatalogPrivateAssetFacts) {
+export function canonicalPrivateCatalogFacts(facts: CatalogPrivateAssetFacts) {
 	return {
 		kind: facts.kind,
 		assetKey: facts.assetKey,
@@ -87,7 +87,7 @@ function canonicalFacts(facts: CatalogPrivateAssetFacts) {
 			? { widthPixels: facts.widthPixels, heightPixels: facts.heightPixels }
 			: { version: facts.version ?? null }),
 		sha256: facts.sha256,
-		provenance: canonicalProvenance(facts.provenance),
+		provenance: canonicalPrivateCatalogProvenance(facts.provenance),
 	};
 }
 
@@ -98,7 +98,7 @@ function canonicalAssetSetIdentity(
 	return {
 		schemaVersion: receiptSet.schemaVersion,
 		siteUrl: receiptSet.siteUrl,
-		assets: [...facts].sort(compareFacts).map(canonicalFacts),
+		assets: [...facts].sort(compareFacts).map(canonicalPrivateCatalogFacts),
 	};
 }
 
@@ -119,7 +119,7 @@ function canonicalStorageReceiptSet(receiptSet: CatalogPrivateStorageReceiptSet)
 			receiptSet.receipts.map((receipt) => receipt.facts),
 		),
 		receipts: receiptSet.receipts.map((receipt) => ({
-			facts: canonicalFacts(receipt.facts),
+			facts: canonicalPrivateCatalogFacts(receipt.facts),
 			uploadedAt: receipt.uploadedAt,
 			etag: receipt.etag,
 		})),
@@ -133,7 +133,7 @@ function canonicalInspectionReceiptSet(receiptSet: CatalogPrivateInspectionRecei
 			receiptSet.receipts.map((receipt) => receipt.facts),
 		),
 		receipts: receiptSet.receipts.map((receipt) => ({
-			facts: canonicalFacts(receipt.facts),
+			facts: canonicalPrivateCatalogFacts(receipt.facts),
 			inspection: receipt.inspection.method === "decoded_image_v1"
 				? { method: receipt.inspection.method }
 				: receipt.inspection.method === "sharp_libvips_full_raster_v1"
