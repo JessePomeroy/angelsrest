@@ -86,7 +86,6 @@ function readyWebAssetValue(asset: Doc<"mediaAssets">) {
 	};
 }
 
-
 async function requireReadyWebMediaAsset(
 	ctx: CatalogGraphContext,
 	siteUrl: string,

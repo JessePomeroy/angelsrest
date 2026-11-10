@@ -30,7 +30,6 @@ const EXACT_PORTRAIT_FRAMING = {
 	},
 } satisfies BlogImageFraming;
 
-
 function category(title: string, slug: string) {
 	return { kind: "category" as const, title, slug };
 }

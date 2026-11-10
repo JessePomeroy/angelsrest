@@ -73,8 +73,6 @@ function requireVerifiedCoordinationAudit(coordination: VerifiedCoordination) {
 	) throw new Error("Private catalog verified coordination audit is corrupt");
 }
 
-
-
 function canonicalAsset(asset: PrivatePrintSourceAsset | PaidDigitalFileAsset) {
 	return {
 		siteUrl: asset.siteUrl,
