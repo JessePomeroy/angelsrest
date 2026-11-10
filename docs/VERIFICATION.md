@@ -134,3 +134,46 @@ projects/configuration, observed result, and any unavailable boundary. Historica
 passes in runbooks are context, not a fresh verification result. Update the
 existing invariant proof or verification feature map when a defect teaches a
 new lesson; use a new gate only when the existing one cannot observe it.
+
+## Profiling component browser cost
+
+Keep routine slice feedback local and focused, then run the complete matrix at
+the batch checkpoint. The fixture suite already shares one Vite server, runs
+tests in parallel with two workers, and prevents external browser requests.
+Slow files can contain many distinct assertions, themes, modalities and browser
+engines; total file time alone does not establish redundant coverage.
+
+For a machine with the matching browsers and system libraries, retain the
+per-test durations without changing the checked-in configuration:
+
+```zsh
+node scripts/run-playwright.mjs --config tests/browser/playwright.config.ts --reporter=json > /tmp/angelsrest-browser-profile.json
+```
+
+If WebKit cannot launch because system libraries are missing, that is unavailable
+coverage, not a product failure or a complete timing sample. The existing cached
+container supplies supported libraries. Select every project explicitly for a
+full offline matrix; its default selects only mobile WebKit:
+
+```zsh
+pnpm test:browser:container --project=desktop --project=mobile --project=webkit-mobile --project=firefox-desktop
+```
+
+The container deliberately requires the version-matched image to exist already;
+it does not pull an image or access providers. Record the runtime, selected
+projects, worker count and failures with timing evidence. Measurements from
+different hosts or incomplete matrices are not before/after speed comparisons.
+Batch pushes reduce repeated complete CI runs while retaining the full required
+checks. Changing matrix coverage, workflow triggers or fixed waits needs its own
+evidence and scoped decision.
+
+The November 9, 2026 debloat assessment ran the unchanged four-project matrix
+with Playwright 1.59.1 in the cached `v1.59.1-noble` image, network disabled and
+two workers: 879 passed, 31 existing skips, no failures or retries, 581.8 seconds
+total. The largest aggregate file durations were delivery lightbox (107.6s),
+platform client creation (61.3s) and liquid navigation (61.0s); these sums include
+multiple cases and engines, not sequential wall time. The slowest individual
+case was mobile WebKit navigation after rotation (11.9s). Inspection retained
+the distinct modality, keyboard, tenant and motion assertions. This sample did
+not establish a safe coverage deletion or a validated scheduling improvement;
+the batch leaves browser tests, waits, worker count and CI configuration intact.
