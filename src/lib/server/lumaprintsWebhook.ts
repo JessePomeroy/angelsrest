@@ -1,5 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Id } from "$convex/dataModel";
+import { type BoundedBytes, declaredLengthStatus, readBoundedBytes } from "$lib/server/boundedBody";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -85,55 +86,23 @@ function payloadError(message: string, status: 400 | 413 = 400) {
 	return new LumaPrintsWebhookPayloadError(message, status);
 }
 
-function cancelBody(reader: ReadableStreamDefaultReader<Uint8Array>) {
-	try {
-		void reader.cancel().catch(() => undefined);
-	} catch {
-		// Cancellation is best-effort cleanup. Keep the selected boundary failure.
-	}
-}
-
 /** Read and parse a webhook body without allocating an unbounded aggregate string. */
 export async function readLumaPrintsShippingPayload(request: Request) {
-	const declaredLength = request.headers.get("content-length");
-	if (declaredLength !== null) {
-		if (!/^\d+$/.test(declaredLength)) {
-			throw payloadError("Invalid LumaPrints webhook content length");
-		}
-		if (BigInt(declaredLength) > BigInt(MAX_BODY_BYTES)) {
-			throw payloadError("LumaPrints webhook body is too large", 413);
-		}
-	}
+	const declared = declaredLengthStatus(request.headers, MAX_BODY_BYTES);
+	if (declared === "invalid") throw payloadError("Invalid LumaPrints webhook content length");
+	if (declared === "too_large") throw payloadError("LumaPrints webhook body is too large", 413);
 
-	const reader = request.body?.getReader();
-	if (!reader) return parseLumaPrintsShippingPayload("");
-	const chunks: Uint8Array[] = [];
-	let total = 0;
+	let raw: BoundedBytes;
 	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			total += value.byteLength;
-			if (total > MAX_BODY_BYTES) {
-				cancelBody(reader);
-				throw payloadError("LumaPrints webhook body is too large", 413);
-			}
-			chunks.push(value);
-		}
-	} catch (error) {
-		if (error instanceof LumaPrintsWebhookPayloadError) throw error;
+		raw = await readBoundedBytes(request.body, MAX_BODY_BYTES);
+	} catch {
 		throw payloadError("Unable to read LumaPrints webhook body");
 	}
-
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
+	if (raw.status === "missing") return parseLumaPrintsShippingPayload("");
+	if (raw.status === "too_large") throw payloadError("LumaPrints webhook body is too large", 413);
 	let rawBody: string;
 	try {
-		rawBody = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		rawBody = new TextDecoder("utf-8", { fatal: true }).decode(raw.bytes);
 	} catch {
 		throw payloadError("Invalid LumaPrints webhook UTF-8");
 	}

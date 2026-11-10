@@ -3,6 +3,7 @@ import { env } from "$env/dynamic/public";
 import { adminConfig } from "$lib/config/admin";
 import { type PlatformClientIntent, parseClientSetupPlan } from "$lib/platformClientSetup";
 import { requireAuthWithIdentity } from "$lib/server/adminAuth";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 import { createAuthenticatedConvexClient } from "$lib/server/convexClient";
 import { getSiteAdminAccess } from "$lib/server/siteAdminAuthorization";
 import { normalizePlatformClientInput } from "../../../packages/crm-api/convex/helpers/platformClientInput";
@@ -13,28 +14,11 @@ export const clientSetupHeaders = {
 };
 
 async function readInput(request: Request): Promise<unknown> {
-	const reader = request.body?.getReader();
-	if (!reader) error(400, "Check the client details.");
-	const chunks: Uint8Array[] = [];
-	let length = 0;
-	for (;;) {
-		const { value, done } = await reader.read();
-		if (done) break;
-		length += value.byteLength;
-		if (length > 32_768) {
-			await reader.cancel();
-			error(413, "The setup request is too large.");
-		}
-		chunks.push(value);
-	}
-	const bytes = new Uint8Array(length);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
+	const raw = await readBoundedBytes(request.body, 32_768);
+	if (raw.status === "missing") error(400, "Check the client details.");
+	if (raw.status === "too_large") error(413, "The setup request is too large.");
 	try {
-		return JSON.parse(new TextDecoder().decode(bytes));
+		return JSON.parse(new TextDecoder().decode(raw.bytes));
 	} catch {
 		error(400, "Check the client details.");
 	}

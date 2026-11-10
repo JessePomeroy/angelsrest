@@ -1,5 +1,6 @@
 import { error, isHttpError, json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 import { CheckoutBridgeError, verifyCheckoutBridgeSignature } from "$lib/server/checkoutBridge";
 import { getCheckoutBridgeTenantConfig } from "$lib/server/checkoutBridgeConfig";
 import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
@@ -10,21 +11,10 @@ import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import { createTenantCartCheckoutSession } from "$lib/server/tenantCartCheckout";
 
 export async function POST({ request }) {
-	const reader = request.body?.getReader();
-	if (!reader) throw error(400, "Missing checkout request");
-	const chunks: Uint8Array[] = [];
-	let length = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		length += value.byteLength;
-		if (length > 64 * 1024) {
-			await reader.cancel();
-			throw error(413, "Checkout request is too large");
-		}
-		chunks.push(value);
-	}
-	const bodyText = Buffer.concat(chunks).toString("utf8");
+	const body = await readBoundedBytes(request.body, 64 * 1024);
+	if (body.status === "missing") throw error(400, "Missing checkout request");
+	if (body.status === "too_large") throw error(413, "Checkout request is too large");
+	const bodyText = body.bytes.toString("utf8");
 
 	try {
 		const { siteUrl, bridgeConfig } = authorizeBridgeRequest(bodyText, request.headers);

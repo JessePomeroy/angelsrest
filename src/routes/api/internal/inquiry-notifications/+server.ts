@@ -1,8 +1,9 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 import { runInquiryNotification } from "$lib/server/inquiryNotificationRunner";
+import { requireRunnerBearer } from "$lib/server/runnerBearer";
 
 export const config = { maxDuration: 60 };
 
@@ -22,32 +23,13 @@ export async function POST({ request }: { request: Request }) {
 		].includes(secret)
 	)
 		error(503, "Notification runner is not configured");
-	const digest = (value: string) => createHash("sha256").update(value).digest();
-	if (
-		!timingSafeEqual(digest(request.headers.get("authorization") ?? ""), digest(`Bearer ${secret}`))
-	)
-		error(401, "Unauthorized");
-	const reader = request.body?.getReader();
-	if (!reader) error(400, "Missing notification job");
-	const chunks: Uint8Array[] = [];
-	let size = 0;
-	try {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			size += value.byteLength;
-			if (size > 512) {
-				await reader.cancel();
-				error(413, "Invalid notification job");
-			}
-			chunks.push(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
+	requireRunnerBearer(request, secret);
+	const raw = await readBoundedBytes(request.body, 512);
+	if (raw.status === "missing") error(400, "Missing notification job");
+	if (raw.status === "too_large") error(413, "Invalid notification job");
 	let body: unknown;
 	try {
-		body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+		body = JSON.parse(raw.bytes.toString("utf8"));
 	} catch {
 		error(400, "Invalid notification job");
 	}

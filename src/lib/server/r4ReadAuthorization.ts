@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "$env/dynamic/private";
+import { type BoundedBytes, declaredLengthStatus, readBoundedBytes } from "$lib/server/boundedBody";
 import { verifySiteAdminRequest } from "$lib/server/siteAdminAuthorization";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
@@ -117,35 +118,17 @@ function signatureMessage(
 }
 
 async function boundedBody(request: Request, maximumBytes: number): Promise<string | null> {
-	const declared = request.headers.get("content-length");
-	if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maximumBytes))
-		return null;
-	if (!request.body) return "";
-	const reader = request.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
+	if (declaredLengthStatus(request.headers, maximumBytes) !== "ok") return null;
+	let raw: BoundedBytes;
 	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			total += value.byteLength;
-			if (total > maximumBytes) {
-				void reader.cancel().catch(() => undefined);
-				return null;
-			}
-			chunks.push(value);
-		}
+		raw = await readBoundedBytes(request.body, maximumBytes);
 	} catch {
 		return null;
 	}
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
+	if (raw.status === "missing") return "";
+	if (raw.status === "too_large") return null;
 	try {
-		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		return new TextDecoder("utf-8", { fatal: true }).decode(raw.bytes);
 	} catch {
 		return null;
 	}

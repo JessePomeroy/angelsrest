@@ -86,6 +86,20 @@ it.each([
 	await expect(POST(event)).rejects.toMatchObject({ status });
 	expect(mocks.query).not.toHaveBeenCalled();
 });
+it("bounds the callback by UTF-8 bytes, not decoded characters", async () => {
+	// 300 characters (under 512) but 600 bytes (over 512).
+	const multibyte = "é".repeat(300);
+	const event = request();
+	event.request = new Request(event.request, { body: multibyte });
+	await expect(POST(event)).rejects.toMatchObject({
+		status: 413,
+		body: { message: "Invalid print job" },
+	});
+	const ascii = request();
+	ascii.request = new Request(ascii.request, { body: "x".repeat(300) });
+	await expect(POST(ascii)).rejects.toMatchObject({ status: 400 });
+	expect(mocks.query).not.toHaveBeenCalled();
+});
 it("prepares only the leased source and checkpoints its descriptor, not a bearer URL", async () => {
 	mocks.query.mockResolvedValue({ job: { stage: "prepare", cursor: 4 }, order, sources: [source] });
 	await POST(request());
