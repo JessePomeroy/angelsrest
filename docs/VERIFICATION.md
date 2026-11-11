@@ -107,7 +107,10 @@ The default browser matrix also includes mobile WebKit and a Firefox project
 covering selected desktop regressions. Install the matching browsers for the
 selected projects. The existing `pnpm test:browser:container` uses an already
 cached, version-matched Playwright image with `--pull=never` and `--network none`;
-it defaults to `webkit-mobile` unless projects are supplied. See the
+it defaults to `webkit-mobile` unless projects are supplied. CI runs its whole
+job in the same image, pinned by digest, as the runner user, so it installs no
+browsers or system packages; a `@playwright/test` bump must also update that
+image tag and digest in `ci.yml`. See the
 [browser README](../tests/browser/README.md) for fixture scope. Full-site E2E
 uses the application server on port 5173: CI exercises the built preview with a
 strict port and no reuse; local runs default to the dev server and may reuse an
