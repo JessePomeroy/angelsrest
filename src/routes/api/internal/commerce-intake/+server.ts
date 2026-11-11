@@ -1,9 +1,10 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import type { Config } from "@sveltejs/adapter-vercel";
 import { error, json } from "@sveltejs/kit";
 import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 import { runCommerceIntakeStep } from "$lib/server/commerceIntakeJob";
+import { requireRunnerBearer } from "$lib/server/runnerBearer";
 import type { RequestHandler } from "./$types";
 
 export const config = { maxDuration: 120 } satisfies Config;
@@ -17,33 +18,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		secret === env.PRINT_FULFILLMENT_RUNNER_SECRET
 	)
 		throw error(503, "Commerce runner is not configured");
-	const digest = (value: string) => createHash("sha256").update(value).digest();
-	if (
-		!timingSafeEqual(digest(request.headers.get("authorization") ?? ""), digest(`Bearer ${secret}`))
-	) {
-		throw error(401, "Unauthorized");
-	}
-	const reader = request.body?.getReader();
-	if (!reader) throw error(400, "Invalid commerce job");
-	const chunks: Uint8Array[] = [];
-	let bytes = 0;
-	try {
-		while (true) {
-			const { value, done } = await reader.read();
-			if (done) break;
-			bytes += value.byteLength;
-			if (bytes > 512) {
-				await reader.cancel();
-				throw error(413, "Invalid commerce job");
-			}
-			chunks.push(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
+	requireRunnerBearer(request, secret);
+	const body = await readBoundedBytes(request.body, 512);
+	if (body.status === "missing") throw error(400, "Invalid commerce job");
+	if (body.status === "too_large") throw error(413, "Invalid commerce job");
 	let input: unknown;
 	try {
-		input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+		input = JSON.parse(body.bytes.toString("utf8"));
 	} catch {
 		throw error(400, "Invalid commerce job");
 	}

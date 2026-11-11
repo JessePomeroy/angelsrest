@@ -3,6 +3,7 @@ import { ConvexError } from "convex/values";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
 import type { LumaPrintsSetupChoice, LumaPrintsSetupData } from "$lib/lumaprintsSetup";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 import { createLumaPrintsClient } from "$lib/server/lumaprints";
 import {
 	configuredLumaPrintsConnectionsForTenant,
@@ -157,29 +158,14 @@ export async function readLumaPrintsSetupForm(request: Request) {
 	) {
 		throw new LumaPrintsSetupError(400, "Invalid supplier setup form.");
 	}
-	const reader = request.body?.getReader();
-	if (!reader) throw new LumaPrintsSetupError(400, "Complete the supplier setup form.");
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		total += value.byteLength;
-		if (total > 4096) {
-			void reader.cancel().catch(() => undefined);
-			throw new LumaPrintsSetupError(413, "Supplier setup form is too large.");
-		}
-		chunks.push(value);
-	}
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
+	const raw = await readBoundedBytes(request.body, 4096);
+	if (raw.status === "missing")
+		throw new LumaPrintsSetupError(400, "Complete the supplier setup form.");
+	if (raw.status === "too_large")
+		throw new LumaPrintsSetupError(413, "Supplier setup form is too large.");
 	let body: string;
 	try {
-		body = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		body = new TextDecoder("utf-8", { fatal: true }).decode(raw.bytes);
 	} catch {
 		throw new LumaPrintsSetupError(400, "Invalid supplier setup form.");
 	}

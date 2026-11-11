@@ -8,6 +8,7 @@ import {
 	refundCents,
 } from "$lib/clientPrintRefunds";
 import { requireAuth } from "$lib/server/adminAuth";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 import {
 	assertClientPrintRefundsEnabled,
 	getClientPrintRefundStripe,
@@ -37,25 +38,10 @@ function recordId<Table extends "orders" | "clientPrintRefundOperations">(
 async function body(request: Request) {
 	if (request.headers.get("content-type")?.split(";")[0] !== "application/x-www-form-urlencoded")
 		throw error(400, "Invalid refund form.");
-	const reader = request.body?.getReader();
-	if (!reader) throw error(400, "Missing refund form.");
-	const chunks: Uint8Array[] = [];
-	let size = 0;
-	try {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			size += value.byteLength;
-			if (size > 16_384) {
-				await reader.cancel();
-				throw error(413, "Refund form is too large.");
-			}
-			chunks.push(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
-	const fields = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+	const raw = await readBoundedBytes(request.body, 16_384);
+	if (raw.status === "missing") throw error(400, "Missing refund form.");
+	if (raw.status === "too_large") throw error(413, "Refund form is too large.");
+	const fields = new URLSearchParams(raw.bytes.toString("utf8"));
 	for (const key of fields.keys())
 		if (fields.getAll(key).length !== 1) throw error(400, "Repeated refund field.");
 	return fields;

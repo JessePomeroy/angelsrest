@@ -1,5 +1,6 @@
 import { readCheckoutConfirmation } from "@jessepomeroy/admin/server/customer-services";
 import { error, json } from "@sveltejs/kit";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 import { verifyCheckoutBridgeSignature } from "$lib/server/checkoutBridge";
 import { getCheckoutBridgeTenantConfig } from "$lib/server/checkoutBridgeConfig";
 import { getStripe } from "$lib/server/stripeClient";
@@ -11,21 +12,10 @@ import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
 /** Read only: existing payments stay confirmable after new checkout is closed. */
 export async function POST({ request }: { request: Request }) {
-	const reader = request.body?.getReader();
-	if (!reader) error(400, "Missing confirmation request");
-	const chunks: Uint8Array[] = [];
-	let size = 0;
-	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		size += value.length;
-		if (size > 8192) {
-			await reader.cancel();
-			error(413, "Confirmation request too large");
-		}
-		chunks.push(value);
-	}
-	const text = Buffer.concat(chunks).toString("utf8");
+	const raw = await readBoundedBytes(request.body, 8192);
+	if (raw.status === "missing") error(400, "Missing confirmation request");
+	if (raw.status === "too_large") error(413, "Confirmation request too large");
+	const text = raw.bytes.toString("utf8");
 	let body: unknown;
 	try {
 		body = JSON.parse(text);

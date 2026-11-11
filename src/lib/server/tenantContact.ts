@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
+import { readBoundedBytes } from "$lib/server/boundedBody";
 
 type Notification = { from: string; to: string; brand: string; apiKey: string };
 type Tenant = {
@@ -129,23 +130,12 @@ export function createTenantContact(deps: {
 		bursts.set(tenant.siteUrl, burst);
 		if (request.headers.get("content-type")?.split(";")[0] !== "application/json")
 			error(415, "Send JSON.");
-		const reader = request.body?.getReader();
-		if (!reader) error(400, "Missing request.");
-		const chunks: Uint8Array[] = [];
-		let size = 0;
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			size += value.byteLength;
-			if (size > 24_000) {
-				await reader.cancel();
-				error(413, "Request too large.");
-			}
-			chunks.push(value);
-		}
+		const raw = await readBoundedBytes(request.body, 24_000);
+		if (raw.status === "missing") error(400, "Missing request.");
+		if (raw.status === "too_large") error(413, "Request too large.");
 		let body: unknown;
 		try {
-			body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+			body = JSON.parse(raw.bytes.toString("utf8"));
 		} catch {
 			error(400, "Invalid JSON.");
 		}
