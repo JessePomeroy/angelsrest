@@ -382,8 +382,6 @@ export const product: CatalogProductEditorState = {
 		schemaVersion: 2,
 		productKind,
 		createdAt: now,
-		title: productDraft.title,
-		variantCount: productDraft.variants?.length ?? 0,
 		draft: productDraft,
 		webMediaAssets: [],
 		printSourceAssets: [],

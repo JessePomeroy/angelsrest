@@ -80,7 +80,7 @@ productDraft.variants = [{ key: "demo-variant-1", order: 0, materialOptionKey: "
 export const product: CatalogProductEditorState = {
 	productId: "demo-product-1", productKey: "demo-window-light", productKind: "print", graphVersion: 2,
 	slug: productDraft.slug ?? null, updatedAt: now, publishedAt: null, published: null,
-	draft: { revisionId: "demo-product-revision-1", schemaVersion: 2, productKind: "print", createdAt: now, title: productDraft.title, variantCount: 1, draft: productDraft, webMediaAssets: [], printSourceAssets: [] },
+	draft: { revisionId: "demo-product-revision-1", schemaVersion: 2, productKind: "print", createdAt: now, draft: productDraft, webMediaAssets: [], printSourceAssets: [] },
 };
 export const productSummaries = [{ ...product, createdAt: now, draft: { revisionId: "demo-product-revision-1", title: productDraft.title ?? null, saleAvailability: productDraft.saleAvailability, variantCount: 1, createdAt: now } }];
 

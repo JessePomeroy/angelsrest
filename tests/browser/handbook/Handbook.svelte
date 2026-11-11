@@ -26,7 +26,7 @@ const authClient: AdminAuthClient = {
   useSession: () => readable({ data: { user: { email: "designer@example.invalid" } }, isPending: false }),
 };
 setAdminConfig({ ...adminConfig, siteUrl, fromEmail: "Demonstration <hello@example.invalid>", authClient,
-  galleryWorkerUrl: "https://example.invalid", mutationTransport: "websocket",
+  galleryWorkerUrl: "https://example.invalid",
   api: { ...adminConfig.api, notifications: undefined },
 });
 </script>
