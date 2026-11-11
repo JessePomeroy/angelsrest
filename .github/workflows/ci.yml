@@ -153,13 +153,15 @@ jobs:
 
       - name: Build and enforce size budgets
         id: build
-        shell: bash
         run: |
           pnpm build
           pnpm check:build-budget | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Match Playwright to the container browsers
-        run: test "$(node -p "require('@playwright/test/package.json').version")" = "1.59.1"
+        run: |
+          v=$(node -p "require('@playwright/test/package.json').version")
+          [ "$v" = 1.59.1 ] || { echo "::error::@playwright/test is $v; bump the CI container tag and digest to match"; exit 1; }
+          node -e "const p=require('@playwright/test'),fs=require('fs');for(const b of ['chromium','firefox','webkit'])if(!fs.existsSync(p[b].executablePath()))throw new Error(b+' is missing from the CI image')"
 
       - name: Component browser regressions
         id: component_browser
