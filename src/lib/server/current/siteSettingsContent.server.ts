@@ -1,8 +1,11 @@
 import { error } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { getConvexUrl } from "$lib/server/runtimeConfig";
+import {
+	convexReadClient,
+	ProjectionError,
+	projectionValidators,
+} from "$lib/server/current/projection.server";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -24,50 +27,17 @@ export type SiteSettingsContent = {
 	};
 };
 
-export class SiteSettingsProjectionError extends Error {
-	constructor() {
-		super("Malformed public Site Settings projection");
-	}
-}
-
 function fail(): never {
-	throw new SiteSettingsProjectionError();
+	throw new ProjectionError("Malformed public Site Settings projection");
 }
 
-function object(
-	value: unknown,
-	required: readonly string[],
-	optional: readonly string[] = [],
-): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) fail();
-	if (Object.getPrototypeOf(value) !== Object.prototype) fail();
-	const keys = Reflect.ownKeys(value);
-	if (keys.some((key) => typeof key !== "string")) fail();
-	const allowed = new Set([...required, ...optional]);
-	if (
-		required.some((key) => !Object.hasOwn(value, key)) ||
-		keys.some((key) => !allowed.has(key as string))
-	)
-		fail();
-	return value as Record<string, unknown>;
-}
-
-function list(value: unknown, maximum: number): unknown[] {
-	if (!Array.isArray(value) || value.length > maximum) fail();
-	return value;
-}
+const { object, list, integer } = projectionValidators(fail);
 
 function requiredText(value: unknown, maximum: number): string {
 	if (typeof value !== "string") fail();
 	const normalized = value.trim();
 	if (!normalized || normalized.length > maximum || normalized !== value) fail();
 	return normalized;
-}
-
-function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
-	if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum)
-		fail();
-	return value as number;
 }
 
 function publicUrl(value: unknown): string {
@@ -140,13 +110,10 @@ export function adaptConvexSiteSettings(value: unknown): SiteSettingsContent {
 function createConvexReader(): ConvexReader {
 	return {
 		async loadPublished(signal) {
-			const client = new ConvexHttpClient(getConvexUrl(), {
-				logger: false,
-				fetch: (input, init) => fetch(input, { ...init, signal }),
-			});
-			return await client.query(api.content.getPublishedSiteSettingsWithRevision, {
-				siteUrl: SITE_DOMAIN,
-			});
+			return await convexReadClient(signal).query(
+				api.content.getPublishedSiteSettingsWithRevision,
+				{ siteUrl: SITE_DOMAIN },
+			);
 		},
 	};
 }
