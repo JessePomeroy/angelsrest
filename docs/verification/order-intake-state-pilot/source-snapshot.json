@@ -1,15 +1,15 @@
 {
-  "head": "187ca087f859999a7f0b5c82779f39bc89b6e28b",
+  "head": "19bf2031becc0ea4f09f73f696ffaf6516e456bd",
   "initial_git_status": "clean",
   "sources": {
     "AGENTS.md": "5b9456be60193825ca54e916eaff9b5e6df9d9320c8fe4db3fe4ba12f9d73571",
     "packages/crm-api/convex/_generated/ai/guidelines.md": "294b619f8246c26bd6bfb6a57122503f0e2149872fc6b26609b7a95bfefaf2b8",
     "src/routes/api/webhooks/stripe/+server.ts": "45e51a4f881ae881cc29e78cf71353aa99cb9beebc6e3140724a75de43390658",
     "src/lib/server/commerceIntakeJob.ts": "92f70e869927953c7582852a3b9bef69126ca84c87df4aba924b53469895ea82",
-    "src/lib/server/orderIntake.ts": "44d71a5cf4381b34dd03ce3f7db6db3e25614d829b89792f13bb9d09eaef00ec",
-    "src/lib/server/commerceTenant.ts": "8b3972fae27a89dc8766f243d68251a04dd780b960237aa2ed1b2cf399d1d4ec",
-    "src/lib/server/webhookOrders.ts": "0bd1a75138db40e834fa442650d428db61be231cdf99036f96e5bebb9f86c5b2",
-    "src/lib/server/webhookOrderPayload.ts": "37261dc61ef846f827288dfeac5004e70c5536a5de644e29e25646a1d95f08e7",
+    "src/lib/server/orderIntake.ts": "09600c76dacfb04a5c8660b28804fd7374608394cc76c2dce49beea672e05c15",
+    "src/lib/server/commerceTenant.ts": "35cb395fb46ac8612d0145751038cf8778bed1cdd7189740941aba4aab463dab",
+    "src/lib/server/webhookOrders.ts": "b04df6e051f9a58608a7c57f3894e507a335f3ac8d6435241d27919ea65a8c89",
+    "src/lib/server/webhookOrderPayload.ts": "be7cf1246d8cbf410d052b4b8ea1e7153306f01055266c8ed7b024a72daaa154",
     "src/lib/server/checkoutSnapshotConsumer.ts": "f42f6e39a094bd1e4d180a5520a396307d01866af98e78fecfd4adc5f0a1ac46",
     "packages/crm-api/convex/orders.ts": "69f801feffd36459808fcd230edba5961f03551f78f08c26beed51616c8af05e",
     "packages/crm-api/convex/schema.ts": "a3ebe0995a2cb951f4ba44d6653d6fad0065c18e1eb3b739c6ae294021deb1f5",
@@ -21,8 +21,8 @@
     "packages/crm-api/convex/checkoutSnapshotReservations.test.ts": "d23a44a5a15c1c3f94fa31db01fccc1e959b547578f4f98d80edb220805daeab",
     "packages/crm-api/convex/orders.test.ts": "37dc710e352756087cadad44761b9f5f85dc4c318b02ef5e0904a564b5e19648",
     "packages/crm-api/convex/commerceIntakeInbox.test.ts": "e21b22a045967a17255f783e90fb8fd3289ade861e38dd6beb4d4e8ec1425127",
-    "package.json": "dd068cb0ecd27fd215a749f116d7c3b0fbe0d24ee8054bbc25728712ec1a0483",
-    "pnpm-lock.yaml": "3f7160d44ebbab0dd8dba6dd1db4dedae1af751f20b88e1724fb506dd0fdbeff",
+    "package.json": "2dd5960c14b3b2f27dbc555c94f101bc88372d07919cb00e79831a1f30e1e540",
+    "pnpm-lock.yaml": "d32db9750ba93a497b1ef06a799e46f0e00d0cd2dec3b38d2ec89760ec48bb3e",
     "src/lib/server/stripeConnect.ts": "2694a7cc917ddd6c2ce935b5dc32c8a613676c352cf8583557ff45588aebcc0f",
     "packages/crm-api/src/stripeContract.ts": "bbae95df51c3cec953cb1cf6d8c16cd2303386e4916d5a78ac484866f135df18",
     "packages/crm-api/convex/helpers/commerceIntakeEnvelope.ts": "9f1e9992e7decae843bbc87bdd956c5c5da57fab5e5287c558d84bb4aae041d7",
@@ -32,6 +32,6 @@
     "packages/crm-api/convex/helpers/orderRevenue.ts": "6e4045cede1ef0eee83121efaa5bb4541363815f2ec7b270a999ba37792642b6",
     "packages/crm-api/convex/authHelpers.ts": "33e5639b0bc34fbb47100ba527dbd601db6ea231c321becf6ec4d1b7476948ee"
   },
-  "execution_tree_sha256": "0dd44031cad14d9155b05d23a49105a31449607dd88ab88f7aaaba74edf729c2",
-  "execution_tree_files": 272
+  "execution_tree_sha256": "ecc61a1fe4b5de6cc54349d789804e804b29b4cb7172c9fb22253da7ad56570b",
+  "execution_tree_files": 273
 }

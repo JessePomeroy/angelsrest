@@ -1,8 +1,9 @@
 # Observed evidence
 
 Verified 2026-11-09 against HEAD
-`187ca087f859999a7f0b5c82779f39bc89b6e28b` and the hashes in
-[source-snapshot.json](source-snapshot.json). The checkout began clean. All new
+`187ca087f859999a7f0b5c82779f39bc89b6e28b` and the hashes then recorded in
+[source-snapshot.json](source-snapshot.json); those records were refreshed after
+the [2026-11-11 review](#source-refresh-review-2026-11-11). The checkout began clean. All new
 files were task-owned; application, schema, generated sources, manifests, CI and
 shared documentation remained unchanged during the initial pilot. The authorized
 retention follow-up adds only the skill allowlist and verification-guide entry.
@@ -192,3 +193,43 @@ removed. Historical controls were not weakened. Revenue and authorization
 guards are representative real-code observations, not newly proved model
 properties. No provider contract, production OCC, arbitrary account collision,
 retention/offboarding race, liveness or exactly-once external effect is verified.
+
+## Source refresh review 2026-11-11
+
+The debloat batch (#777–#783) changed pinned sources, so `check.py` correctly
+reported the correspondence and copied CRM tree as stale. Each pinned file was
+diffed against the exact revision whose content matched its recorded hash.
+
+| Change | Source | Model impact |
+| --- | --- | --- |
+| Customer confirmation uses the Convex-returned `fulfillmentType` (`orderIntake.ts`, `webhookOrders.ts`) | #778 | None. The value is read from the `orders.create` result after the transaction and only feeds post-commit email. |
+| Snapshot checkouts ignore `isDigital` metadata (`webhookOrderPayload.ts`) | #778 | None. The current hub no longer stamps that metadata (direct-checkout stamping was removed in #468), so first-create arguments are unchanged for hub-created sessions. On an existing-order replay the payload's `fulfillmentType` can now be `"self"` where metadata said `"true"`; the bridge probe's replay exercises this. `orders.create` returns the saved order with its stored (or snapshot-repaired) `fulfillmentType` and never reads that argument, and handle omission on replay is unchanged. |
+| `isHubSite` exported (`commerceTenant.ts`) | #778 | None; same function, now importable. |
+| Refund notifications spread the result minus `kind`; the admin-alert wrapper is inlined (`orderIntake.ts`, `webhookOrders.ts`, `printFulfillment.ts`) | #781 | None. These are post-commit effects with the same fields. |
+| Unused dev dependencies and overrides removed; `jsdom` declared directly instead of resolving only as an optional Vitest dependency (`package.json`, `pnpm-lock.yaml`) | #779 | None. The pinned Vitest 4.1.12, convex 1.49.0, convex-test 0.0.52 and @edge-runtime/vm 5.0.0 are unchanged, and the reused suites run in the edge runtime, not jsdom. |
+| Catalog test fixtures moved and catalog private-asset helpers shared (copied CRM tree) | #777 | None. `orders.ts` reaches these files through `catalogCommerce.ts`/`catalogProductGraphData.ts` and `orders.test.ts` through `test/catalogProductGraphFixtures.ts`. `schema.ts` imports `catalogPrivateAssetValidators.ts` directly, but that file only gained two value helpers; its validators are unchanged. The #777 changes consolidate duplicate helpers with identical bodies and key order and move fixtures with identical values. |
+
+Route selection, the single `orders.create` lookup, consume and insert
+transaction, reservation consumption, replay handle omission and the producer
+gate are unchanged.
+
+A complete rerun with the candidate hashes, at `19bf2031` in a disposable
+checkout, reported `Pilot status: pass`. Every count matches the
+[ordering refinement](#ordering-refinement-2026-11-09):
+
+- Correct connected and platform configurations: each 4,196 generated / 1,206
+  distinct / zero queued.
+- Lookup-removal, split-transfer and gate-first controls: expected violations,
+  at 233/119/54, 22/17/9 and 390/185/75 (generated/distinct/queued).
+- Actual Convex baseline: 252 passed, 0 failed.
+- Both implementation mutations were caught (0 of 3 passed each), and the
+  restored run passed 15 of 15.
+
+The retained local evidence, including the candidate hash patch and the run log,
+is in the ignored `test-results/order-intake-state-review-20261111/`. Only the
+recorded hashes, heads, tree digest and file count (272 → 273, the new
+`test/webMediaFixtures.ts`) and the refinement record's scope wording changed;
+no model, control, probe or bound was edited. `initial_git_status` still describes the original recording.
+The refresh run's checkout differed from `19bf2031` only in these two snapshot
+records, whose committed heads and scope wording were finalised after the run;
+the source hashes and tree digest are identical to the ones verified.

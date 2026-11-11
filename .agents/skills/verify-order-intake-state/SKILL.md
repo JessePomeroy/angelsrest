@@ -79,12 +79,13 @@ and supplier/email/refund effects. No exactly-once external fulfillment claim.
 
 ## Source synchronization
 
-Reviewed HEAD: `187ca087f859999a7f0b5c82779f39bc89b6e28b`.
+Reviewed HEAD: `187ca087f859999a7f0b5c82779f39bc89b6e28b`, refreshed after review
+at `19bf2031becc0ea4f09f73f696ffaf6516e456bd` (2026-11-11).
 The [source snapshot](../../../docs/verification/order-intake-state-pilot/source-snapshot.json)
 records per-file SHA-256 hashes of the covered sources and a hash of the copied
 CRM execution tree. HEAD alone cannot identify a dirty source snapshot.
 The [supplemental record](../../../docs/verification/order-intake-state-pilot/refinement-source-snapshot.json)
-reviews unchanged application sources at `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3`
+was first reviewed at `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3`, re-reviewed at `19bf2031`,
 and pins the additional read-only supplier/email boundary descriptions. Historical
 evidence is not overwritten when model bounds or fixture observations change.
 Changes to any recorded source/dependency invalidate the correspondence gate.

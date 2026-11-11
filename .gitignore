@@ -60,3 +60,6 @@ packages/crm-api/convex/**/*.d.ts.map
 
 # Local rendered evidence; retain the small source surface brief separately.
 /.impeccable/review/
+
+# Python bytecode from local verification runs
+__pycache__/
