@@ -239,7 +239,6 @@ export default defineSchema({
 		attempts: v.number(), recoveries: v.number(), nextAt: v.number(), firstAttemptAt: v.optional(v.number()),
 		leaseToken: v.optional(v.string()), errorCode: v.optional(v.string()), providerId: v.optional(v.string()), acceptedAt: v.optional(v.number()),
 	}).index("by_inquiryId", ["inquiryId"]),
-	businessSearchMigrations: defineTable({ kind: v.union(v.literal("orders"), v.literal("invoices"), v.literal("quotes"), v.literal("contracts")), cursor: v.string(), done: v.boolean() }).index("by_kind", ["kind"]),
 	// Photographers you've built sites for
 	platformClients: defineTable({
 		// Immutable routing identity. Optional only while existing rows are widened.
