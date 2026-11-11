@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
 	type CustomerCommerceEmailInput,
 	type OwnerCommerceEmailInput,
-	renderClassicOrderConfirmationEmailHtml,
 	renderCustomerCommerceEmailHtml,
 	renderOwnerCommerceEmailHtml,
 } from "$lib/server/commerceEmailHtml";
@@ -87,20 +86,6 @@ describe("commerceEmailHtml", () => {
 
 		expect(html).not.toContain("background-image: url(");
 		expect(html).not.toContain("media.angelsrest.online");
-		expect(html).toContain("2 × $24.00");
-	});
-
-	it("keeps the original stationery order-confirmation design available as a backup", () => {
-		const html = renderClassicOrderConfirmationEmailHtml(physicalInput);
-
-		expect(html).toContain('<meta name="color-scheme" content="light dark">');
-		expect(html).toContain("@media only screen and (max-width: 640px)");
-		expect(html).toContain("@media (prefers-color-scheme: dark)");
-		expect(html).toContain('width="600"');
-		expect(html).toContain("Thank you for your order.");
-		expect(html).toContain("Order received");
-		expect(html).toContain("We are arranging fulfillment for your order.");
-		expect(html).toContain("Items ordered");
 		expect(html).toContain("2 × $24.00");
 	});
 

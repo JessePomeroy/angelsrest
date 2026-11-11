@@ -20,3 +20,6 @@ Archived material includes:
 - `PLAN-legacy.md` — original phased learning/build plan
 - `AGENTIC_WORKFLOW-2026-03.md` — historical cross-project agent workflow
 - `guides/` — original educational guides and integration notes
+  (the Tailwind/global-CSS guide and the original app roadmap, which taught the
+  retired Tailwind and Sanity stack, were removed on 2026-11-11 and remain in
+  git history)
