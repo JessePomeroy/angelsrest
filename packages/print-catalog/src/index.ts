@@ -419,12 +419,4 @@ export const SIZE_DROPDOWN_OPTIONS = V2_SIZES.map((size) => ({
 	value: size.slug,
 }));
 
-export type LumaPaper = V2Paper;
-export type LumaSize = V2Size;
-export type LumaCatalogEntry = V2CatalogEntry;
-
-export const LUMA_PAPERS = V2_PAPERS;
-export const LUMA_SIZES = V2_SIZES;
-export const LUMA_WHOLESALE_COSTS = V2_WHOLESALE_COSTS;
-
 export * from "./pricing";
