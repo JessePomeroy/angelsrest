@@ -143,15 +143,17 @@ That different-purchase question is outside this single-purchase bound.
 | `Quiescent` | Abstraction of no further deliveries in this finite run | Stuttering end condition; no new implementation operation or liveness promise |
 | `SingleDurableReceipt` | Session indexed lookup, snapshot transfer, existing-order return, tenant/account guards | At most one correct order; reservation present iff no order within this intake-only model; successful IDs refer to that order |
 
-Source snapshot: HEAD `187ca087f859999a7f0b5c82779f39bc89b6e28b` plus per-file
-SHA-256 hashes in [source-snapshot.json](source-snapshot.json). The initial
-checkout was clean. The runner also checks a digest of the copied CRM source and
+Source snapshot: per-file SHA-256 hashes in
+[source-snapshot.json](source-snapshot.json), first recorded at HEAD
+`187ca087f859999a7f0b5c82779f39bc89b6e28b` from a clean checkout and refreshed
+at `19bf2031becc0ea4f09f73f696ffaf6516e456bd` after the
+[2026-11-11 review](evidence.md#source-refresh-review-2026-11-11). The runner also checks a digest of the copied CRM source and
 fixture tree before/after execution, to detect dependency drift during concurrent
 work. Any correspondence mismatch requires review, not automatic hash refresh.
 The [supplemental source record](refinement-source-snapshot.json) records the
-refinement review at HEAD `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3` and hashes the
-two additional inspected host effect boundaries; original application hashes
-are unchanged. The driver validates both records before and after execution.
+refinement review, first at HEAD `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3`
+and re-reviewed at `19bf2031`, and hashes the two additional inspected host
+effect boundaries. The driver validates both records before and after execution.
 
 ## Bounds and limits
 

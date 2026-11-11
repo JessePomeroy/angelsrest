@@ -192,3 +192,39 @@ removed. Historical controls were not weakened. Revenue and authorization
 guards are representative real-code observations, not newly proved model
 properties. No provider contract, production OCC, arbitrary account collision,
 retention/offboarding race, liveness or exactly-once external effect is verified.
+
+## Source refresh review 2026-11-11
+
+The debloat batch (#777–#783) changed pinned sources, so `check.py` correctly
+reported the correspondence and copied CRM tree as stale. Each pinned file was
+diffed against the exact revision whose content matched its recorded hash.
+
+| Change | Source | Model impact |
+| --- | --- | --- |
+| Customer confirmation uses the Convex-returned `fulfillmentType` (`orderIntake.ts`, `webhookOrders.ts`) | #778 | None. The value is read from the `orders.create` result after the transaction and only feeds post-commit email. |
+| Snapshot checkouts ignore `isDigital` metadata (`webhookOrderPayload.ts`) | #778 | None. The hub never set that metadata, so `orders.create` arguments are byte-identical for hub-created sessions. The existing-order replay returns before the value is used, and handle omission on replay is unchanged. |
+| `isHubSite` exported (`commerceTenant.ts`) | #778 | None; same function, now importable. |
+| Refund notifications spread the result minus `kind`; the admin-alert wrapper is inlined (`orderIntake.ts`, `webhookOrders.ts`, `printFulfillment.ts`) | #781 | None. These are post-commit effects with the same fields. |
+| Unused dev dependencies and overrides removed (`package.json`, `pnpm-lock.yaml`) | #779 | None. The pinned Vitest 4.1.12, convex 1.49.0, convex-test 0.0.52 and @edge-runtime/vm 5.0.0 are unchanged. |
+| Catalog test fixtures moved and catalog private-asset helpers shared (copied CRM tree) | #777 | None. `orders.ts`, `helpers/orderRouting.ts` and the reservation code import none of them. |
+
+Route selection, the single `orders.create` lookup, consume and insert
+transaction, reservation consumption, replay handle omission and the producer
+gate are unchanged.
+
+A complete rerun with the candidate hashes, at `19bf2031` in a disposable
+checkout, reported `Pilot status: pass`. Every count matches the
+[ordering refinement](#ordering-refinement-2026-11-09):
+
+- Correct connected and platform configurations: each 4,196 generated / 1,206
+  distinct / zero queued.
+- Lookup-removal, split-transfer and gate-first controls: expected violations,
+  at 233/119/54, 22/17/9 and 390/185/75 (generated/distinct/queued).
+- Actual Convex baseline: 252 passed, 0 failed.
+- Both implementation mutations were caught (0 of 3 passed each), and the
+  restored run passed 15 of 15.
+
+The retained local evidence, including the candidate hash patch and the run log,
+is in the ignored `test-results/order-intake-state-review-20261111/`. Only the
+recorded hashes, heads and tree digest changed; no model, control, probe or
+bound was edited.
