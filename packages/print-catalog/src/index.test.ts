@@ -9,9 +9,6 @@ import {
 	getPrintTargetDpi,
 	getSizeBySlug,
 	getWholesaleCost,
-	LUMA_PAPERS,
-	LUMA_SIZES,
-	LUMA_WHOLESALE_COSTS,
 	PAPER_DROPDOWN_OPTIONS,
 	parseCanvasSlug,
 	SIZE_DROPDOWN_OPTIONS,
@@ -21,12 +18,6 @@ import {
 } from ".";
 
 describe("@jessepomeroy/print-catalog", () => {
-	it("keeps legacy Luma aliases pointed at the V2 catalog arrays", () => {
-		expect(LUMA_PAPERS).toBe(V2_PAPERS);
-		expect(LUMA_SIZES).toBe(V2_SIZES);
-		expect(LUMA_WHOLESALE_COSTS).toBe(V2_WHOLESALE_COSTS);
-	});
-
 	it("contains the expected paper, size, and wholesale matrix", () => {
 		expect(V2_PAPERS).toHaveLength(6);
 		expect(V2_SIZES).toHaveLength(9);
