@@ -124,7 +124,9 @@ async function graphCounts(
 		revisions: (
 			await ctx.db
 				.query("catalogProductRevisions")
-				.withIndex("by_productId_and_createdAt", (q) => q.eq("productId", productId))
+				.withIndex("by_siteUrl_and_productId", (q) =>
+					q.eq("siteUrl", SITE_A.siteUrl).eq("productId", productId),
+				)
 				.collect()
 		).length,
 		variants: (
@@ -728,12 +730,10 @@ describe("tenant-scoped catalog product drafts", () => {
 			/cannot exceed 500 print products/i,
 		);
 		const stored = await t.run(async (ctx) => ({
-			products: await ctx.db
+			products: (await ctx.db
 				.query("catalogProducts")
-				.withIndex("by_siteUrl_and_productKind_and_createdAt", (q) =>
-					q.eq("siteUrl", SITE_A.siteUrl).eq("productKind", "print"),
-				)
-				.take(501),
+				.withIndex("by_siteUrl_and_productKey", (q) => q.eq("siteUrl", SITE_A.siteUrl))
+				.take(502)).filter((product) => product.productKind === "print"),
 			revisions: await ctx.db.query("catalogProductRevisions").take(1),
 			variants: await ctx.db.query("catalogProductVariants").take(1),
 		}));

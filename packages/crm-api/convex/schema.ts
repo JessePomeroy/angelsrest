@@ -334,8 +334,7 @@ export default defineSchema({
 			v.literal("operator"),
 		),
 	})
-		.index("by_kind_and_value", ["kind", "value"])
-		.index("by_tenantId", ["tenantId"]),
+		.index("by_kind_and_value", ["kind", "value"]),
 
 	// Provider-neutral editorial identity. Legacy page kinds remain tenant
 	// singletons; supporting Blog records use a stable document key plus a
@@ -398,12 +397,7 @@ export default defineSchema({
 		createdBy: v.string(),
 	})
 		.index("by_documentId_and_createdAt", ["documentId", "createdAt"])
-		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"])
-		.index("by_restoredFromRevisionId", ["restoredFromRevisionId"])
-		.index("by_siteUrl_and_restoreOperationId", [
-			"siteUrl",
-			"restoreOperationId",
-		]),
+		.index("by_restoredFromRevisionId", ["restoredFromRevisionId"]),
 
 	// Ordered Post body rows keep rich text queryable without placing an
 	// unbounded document inside the revision payload. Image blocks contain only
@@ -507,12 +501,7 @@ export default defineSchema({
 		deletionRequestedBy: v.optional(v.string()),
 	})
 		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])
-		.index("by_siteUrl_and_status", ["siteUrl", "status"])
-		.index("by_siteUrl_and_createdAt", ["siteUrl", "createdAt"])
-		.searchIndex("search_originalFilename", {
-			searchField: "originalFilename",
-			filterFields: ["siteUrl", "status"],
-		}),
+		.index("by_siteUrl_and_createdAt", ["siteUrl", "createdAt"]),
 
 	// A completed storage deletion permanently reserves the Worker's asset UUID.
 	// Keeping this small record outside the active media library prevents a
@@ -558,7 +547,6 @@ export default defineSchema({
 		deletionRequestedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
-		.index("by_siteUrl_and_sourceDocumentId", ["siteUrl", "sourceDocumentId"])
 		.index("by_siteUrl_and_portfolioOrder", ["siteUrl", "portfolioOrder"])
 		.index("by_siteUrl_and_isPublished_and_portfolioOrder", [
 			"siteUrl",
@@ -581,7 +569,6 @@ export default defineSchema({
 		deletedAt: v.number(),
 		deletedBy: v.string(),
 	})
-		.index("by_galleryId", ["galleryId"])
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"]),
 
 	portfolioGalleryRevisions: defineTable({
@@ -609,9 +596,7 @@ export default defineSchema({
 		restoreRequestDigest: v.optional(v.string()),
 	})
 		.index("by_galleryId_and_createdAt", ["galleryId", "createdAt"])
-		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"])
-		.index("by_siteUrl_and_seoOgImageAssetId", ["siteUrl", "seoOgImageAssetId"])
-		.index("by_siteUrl_and_restoreOperationId", ["siteUrl", "restoreOperationId"]),
+		.index("by_siteUrl_and_seoOgImageAssetId", ["siteUrl", "seoOgImageAssetId"]),
 
 	portfolioPlacements: defineTable({
 		siteUrl: v.string(),
@@ -658,11 +643,6 @@ export default defineSchema({
 			"graphVersion",
 			"publishedAt",
 		])
-		.index("by_siteUrl_and_productKind_and_createdAt", [
-			"siteUrl",
-			"productKind",
-			"createdAt",
-		])
 		.index("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", [
 			"siteUrl",
 			"graphVersion",
@@ -677,7 +657,6 @@ export default defineSchema({
 		catalogProductRevisionV1Validator,
 		...catalogProductRevisionV2Validators,
 	))
-		.index("by_productId_and_createdAt", ["productId", "createdAt"])
 		.index("by_siteUrl_and_productId", ["siteUrl", "productId"]),
 
 	// Variant rows belong to exactly one immutable revision. Stable opaque keys
@@ -694,7 +673,6 @@ export default defineSchema({
 		status: catalogVariantStatusValidator,
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
-		.index("by_revisionId_and_variantKey", ["revisionId", "variantKey"])
 		.index("by_productId_and_revisionId", ["productId", "revisionId"])
 		.index("by_siteUrl", ["siteUrl"]),
 
@@ -711,7 +689,6 @@ export default defineSchema({
 		altText: v.optional(v.string()),
 	})
 		.index("by_revisionId_and_role_and_order", ["revisionId", "role", "order"])
-		.index("by_revisionId_and_placementKey", ["revisionId", "placementKey"])
 		.index("by_productId_and_revisionId", ["productId", "revisionId"])
 		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"]),
 
@@ -740,12 +717,10 @@ export default defineSchema({
 	// private namespaces. No public URL or download capability is stored here.
 	catalogPrintSourceAssets: defineTable(privatePrintSourceAssetValidator)
 		.index("by_siteUrl_and_assetKey", ["siteUrl", "assetKey"])
-		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"])
 		.index("by_siteUrl_and_createdAt", ["siteUrl", "createdAt"]),
 
 	catalogDigitalFileAssets: defineTable(paidDigitalFileAssetValidator)
 		.index("by_siteUrl_and_assetKey", ["siteUrl", "assetKey"])
-		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"])
 		.index("by_siteUrl_and_createdAt", ["siteUrl", "createdAt"]),
 
 	// Storage and content inspection use separate tenant credentials. The first
@@ -904,12 +879,7 @@ export default defineSchema({
 	)
 		.index("by_siteUrl_and_kind_and_assetKey", ["siteUrl", "kind", "assetKey"])
 		.index("by_siteUrl_and_kind_and_assetId", ["siteUrl", "kind", "assetId"])
-		.index("by_kind_and_assetId", ["kind", "assetId"])
-		.index("by_originCoordinationId_and_kind_and_assetKey", [
-			"originCoordinationId",
-			"kind",
-			"assetKey",
-		]),
+		.index("by_kind_and_assetId", ["kind", "assetId"]),
 
 	catalogProductPrintSources: defineTable({
 		siteUrl: v.string(),
@@ -920,7 +890,6 @@ export default defineSchema({
 		order: v.number(),
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
-		.index("by_revisionId_and_relationKey", ["revisionId", "relationKey"])
 		.index("by_productId_and_revisionId", ["productId", "revisionId"])
 		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"]),
 
@@ -934,7 +903,6 @@ export default defineSchema({
 		printSourceKey: v.string(),
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
-		.index("by_revisionId_and_memberKey", ["revisionId", "memberKey"])
 		.index("by_productId_and_revisionId", ["productId", "revisionId"])
 		.index("by_siteUrl", ["siteUrl"]),
 
@@ -977,8 +945,7 @@ export default defineSchema({
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
-		.index("by_siteUrl_and_purpose", ["siteUrl", "purpose"])
-		.index("by_purpose_and_state_and_generation", ["purpose", "state", "generation"]),
+		.index("by_siteUrl_and_purpose", ["siteUrl", "purpose"]),
 
 	// One immutable pre-protocol cutoff per tenant/account scope. No timestamp is
 	// accepted from a browser or admin input; the activation mutation supplies the
@@ -992,8 +959,7 @@ export default defineSchema({
 		acceptUntilMs: v.number(),
 		createdAt: v.number(),
 	})
-		.index("by_siteUrl_and_accountScope", ["siteUrl", "accountScope"])
-		.index("by_siteUrl_and_activationGeneration", ["siteUrl", "activationGeneration"]),
+		.index("by_siteUrl_and_accountScope", ["siteUrl", "accountScope"]),
 
 	commerceIntakeInbox: defineTable(commerceIntakeFields)
 		.index("by_stripeEventId", ["stripeEventId"])
@@ -1059,12 +1025,6 @@ export default defineSchema({
 			"accountScope",
 			"attemptDigest",
 		])
-		.index("by_siteUrl_and_hostGeneration_and_admissionGeneration_and_state", [
-			"siteUrl",
-			"hostGeneration",
-			"admissionGeneration",
-			"state",
-		])
 		.index("by_siteUrl_and_state", ["siteUrl", "state"])
 		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
 		.index("by_admissionHandleHash", ["admissionHandleHash"]),
@@ -1097,8 +1057,7 @@ export default defineSchema({
 	})
 		.index("by_siteUrl_and_handleHash", ["siteUrl", "handleHash"])
 		.index("by_siteUrl_and_state", ["siteUrl", "state"])
-		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
-		.index("by_stripeSessionId", ["stripeSessionId"]),
+		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"]),
 
 	// Immutable evidence and terminal outcomes for one-use admin refund recoveries.
 	manualRefundRecoveries: defineTable(v.union(
@@ -1128,7 +1087,7 @@ export default defineSchema({
 				v.literal("execution"),
 			)),
 		}),
-	)).index("by_recoveryId", ["recoveryId"]),
+	)),
 
 	// Minimal audit proof for one exact historical reservation deletion.
 	checkoutSnapshotReservationCloseouts: defineTable({
@@ -1170,7 +1129,7 @@ export default defineSchema({
 		attempts: v.number(), startedAt: v.number(), nextAt: v.number(),
 		leaseToken: v.optional(v.string()), leaseExpiresAt: v.optional(v.number()),
 		errorCode: v.optional(v.string()),
-	}).index("by_orderId", ["orderId"]),
+	}),
 	printFulfillmentSources: defineTable({
 		jobId: v.id("printFulfillmentJobs"), index: v.number(),
 		descriptor: printJobDescriptor, item: printJobItem,
@@ -1523,19 +1482,9 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.searchIndex("search_records", { searchField: "searchText", filterFields: ["siteUrl", "status"] })
 		.index("by_siteUrl_status", ["siteUrl", "status"])
-		.index("by_siteUrl_and_printProviderAdmissionStatus", [
-			"siteUrl",
-			"printProviderAdmissionStatus",
-		])
 		.index("by_tenantId", ["tenantId"])
 		.index("by_stripeSessionId", ["stripeSessionId"])
 		.index("by_orderNumber", ["siteUrl", "orderNumber"])
-		.index("by_customerEmail", ["siteUrl", "customerEmail"])
-		// Retained during the additive rollout; current consumers use connection scope.
-		.index("by_lumaprintsOrderNumber_global", ["lumaprintsOrderNumber"])
-		.index("by_lumaprintsSubmissionOrderNumber_global", [
-			"lumaprintsSubmissionOrderNumber",
-		])
 		.index("by_connectionRef_and_lumaprintsOrderNumber", [
 			"lumaprintsConnection.connectionRef", "lumaprintsOrderNumber",
 		])
@@ -1557,9 +1506,7 @@ export default defineSchema({
 		resetId: v.string(),
 		retiredAt: v.number(),
 	})
-		.index("by_stripeSessionId", ["stripeSessionId"])
-		.index("by_resetId_and_stripeSessionId", ["resetId", "stripeSessionId"])
-		.index("by_siteUrl", ["siteUrl"]),
+		.index("by_stripeSessionId", ["stripeSessionId"]),
 
 	// Durable one-use receipt for an atomic tenant order reset.
 	orderResetReceipts: defineTable({
@@ -1569,7 +1516,7 @@ export default defineSchema({
 		retiredOrderCount: v.number(),
 		manifestDigest: v.string(),
 		completedAt: v.number(),
-	}).index("by_resetId", ["resetId"]),
+	}),
 
 	// One durable claim per signed Stripe event and account scope. The claim is
 	// written before the customer payment-failure email attempt, so retries and
@@ -1701,14 +1648,14 @@ export default defineSchema({
  deliveryUploads: defineTable({
   siteUrl:v.string(),galleryId:v.id("galleries"),r2Key:v.string(),filename:v.string(),sizeBytes:v.number(),width:v.number(),height:v.number(),
   state:v.union(v.literal("pending"),v.literal("registered"),v.literal("deleting"),v.literal("deleted")),open:v.boolean(),
- }).index("by_key",["r2Key"]).index("by_gallery_open",["galleryId","open"]).index("by_gallery",["galleryId"]).index("by_siteUrl",["siteUrl"]),
+ }).index("by_key",["r2Key"]).index("by_gallery_open",["galleryId","open"]).index("by_gallery",["galleryId"]),
  recurringInvoiceSchedules: defineTable({
   siteUrl: v.string(), templateInvoiceId: v.id("invoices"), clientId: v.id("photographyClients"), clientName: v.string(),
   items: v.array(v.object({description:v.string(),quantity:v.number(),unitPrice:v.number()})), taxPercent:v.optional(v.number()), notes:v.optional(v.string()),
   interval:v.union(v.literal("weekly"),v.literal("monthly"),v.literal("quarterly"),v.literal("yearly")),
   anchor:v.string(), cycle:v.number(), nextDueDate:v.string(), endDate:v.optional(v.string()),
   state:v.union(v.literal("active"),v.literal("paused"),v.literal("canceled"),v.literal("completed")), reason:v.optional(v.string()),
- }).index("by_template",["templateInvoiceId"]).index("by_state_next",["state","nextDueDate"]).index("by_siteUrl",["siteUrl"]),
+ }).index("by_template",["templateInvoiceId"]).index("by_state_next",["state","nextDueDate"]),
 
 	// Issued invoice checkouts are immutable payment snapshots, retained across edits.
 	invoiceCheckouts: defineTable({
@@ -1729,7 +1676,7 @@ export default defineSchema({
 		paidCents: v.optional(v.number()),
 		paidAt: v.optional(v.number()),
 		paymentIntentId: v.optional(v.string()),
-	}).index("by_invoiceId", ["invoiceId"])
+	})
 		.index("by_siteUrl_and_stripeSessionId", ["siteUrl", "stripeSessionId"]),
 
 	// Authoritative allocation state for invoice and quote numbers.
@@ -1934,9 +1881,7 @@ export default defineSchema({
 		resolution: v.optional(documentEmailResolutionAuditValidator),
 	})
 		.index("by_siteUrl_and_attemptId", ["siteUrl", "attemptId"])
-		.index("by_siteUrl_and_documentKey_and_open", ["siteUrl", "documentKey", "open"])
-		.index("by_siteUrl_and_documentKey_and_status", ["siteUrl", "documentKey", "status"])
-		.index("by_status_and_claimExpiresAt", ["status", "claimExpiresAt"]),
+		.index("by_siteUrl_and_documentKey_and_open", ["siteUrl", "documentKey", "open"]),
 
 	// Portal share tokens — public links for clients to view/act on documents
 	portalTokens: defineTable({
@@ -1981,7 +1926,6 @@ export default defineSchema({
 		clientId: v.id("photographyClients"),
 		tagId: v.id("clientTags"),
 	})
-		.index("by_siteUrl", ["siteUrl"])
 		.index("by_clientId", ["clientId"])
 		.index("by_tagId", ["tagId"])
 		// Audit M22: fast point-check for "is this tag assigned to this client?"
@@ -2044,8 +1988,7 @@ export default defineSchema({
 		version: v.string(),
 		updatedAt: v.number(),
 	})
-		.index("by_gallery", ["galleryId"])
-		.index("by_siteUrl", ["siteUrl"]),
+		.index("by_gallery", ["galleryId"]),
 
 	// Short-lived bearer grants issued only after a server-side password check.
 	// The verifier version binds grants to the current password, making password
@@ -2059,8 +2002,7 @@ export default defineSchema({
 		expiresAt: v.number(),
 	})
 		.index("by_grant", ["grant"])
-		.index("by_gallery", ["galleryId"])
-		.index("by_expiresAt", ["expiresAt"]),
+		.index("by_gallery", ["galleryId"]),
 
 	// Token-scoped throttling prevents online password guessing. A successful
 	// verification clears the row; lockouts expire automatically by timestamp.
@@ -2070,8 +2012,7 @@ export default defineSchema({
 		windowStartedAt: v.number(),
 		lockedUntil: v.optional(v.number()),
 	})
-		.index("by_portalToken", ["portalTokenId"])
-		.index("by_lockedUntil", ["lockedUntil"]),
+		.index("by_portalToken", ["portalTokenId"]),
 
 	// Gallery images — individual photos in a delivery gallery
 	galleryImages: defineTable({
@@ -2093,7 +2034,6 @@ export default defineSchema({
 		.index("by_galleryId_and_siteUrl_and_isFavorite", ["galleryId", "siteUrl", "isFavorite"])
 		.index("by_galleryId_and_siteUrl_and_order", ["galleryId", "siteUrl", "order"])
 		.index("by_galleryId_and_siteUrl_and_pairKey_and_previewable_and_order", ["galleryId", "siteUrl", "pairKey", "previewable", "order"])
-		.index("by_siteUrl", ["siteUrl"])
 		.index("by_r2Key", ["r2Key"]),
 
 	galleryProofSubmissions: defineTable({
@@ -2116,7 +2056,6 @@ export default defineSchema({
 		editingNotes: v.string(),
 		order: v.number(),
 	})
-		.index("by_siteUrl", ["siteUrl"])
 		.index("by_galleryId", ["galleryId"])
 		.index("by_submissionId_and_order", ["submissionId", "order"]),
 

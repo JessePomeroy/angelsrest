@@ -97,10 +97,10 @@ describe("catalog product graph V2 integrity and asset boundaries", () => {
 
 		const order = await createPrint("corrupt-order");
 		await fixture.t.run(async (ctx) => {
-			const row = await ctx.db.query("catalogProductMediaPlacements")
-				.withIndex("by_revisionId_and_placementKey", (q) =>
-					q.eq("revisionId", order.revisionId).eq("placementKey", "primary")
-				).unique();
+			const row = (await ctx.db.query("catalogProductMediaPlacements")
+				.withIndex("by_productId_and_revisionId", (q) =>
+					q.eq("productId", order.productId).eq("revisionId", order.revisionId)
+				).collect()).find((placement) => placement.placementKey === "primary");
 			if (!row) throw new Error("Fixture placement not found");
 			await ctx.db.patch(row._id, { order: 3 });
 		});
@@ -110,10 +110,10 @@ describe("catalog product graph V2 integrity and asset boundaries", () => {
 
 		const key = await createPrint("corrupt-key");
 		await fixture.t.run(async (ctx) => {
-			const row = await ctx.db.query("catalogProductMediaPlacements")
-				.withIndex("by_revisionId_and_placementKey", (q) =>
-					q.eq("revisionId", key.revisionId).eq("placementKey", "detail")
-				).unique();
+			const row = (await ctx.db.query("catalogProductMediaPlacements")
+				.withIndex("by_productId_and_revisionId", (q) =>
+					q.eq("productId", key.productId).eq("revisionId", key.revisionId)
+				).collect()).find((placement) => placement.placementKey === "detail");
 			if (!row) throw new Error("Fixture placement not found");
 			await ctx.db.patch(row._id, { placementKey: "primary" });
 		});

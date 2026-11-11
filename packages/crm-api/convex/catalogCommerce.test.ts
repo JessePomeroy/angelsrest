@@ -424,17 +424,17 @@ describe("catalog commerce checkout", () => {
 		await reject(item(print, "print", { materialOptionKey: "glossy" }));
 		await reject(item(print, "print", { borderOptionKey: "1", frameOptionKey: "0.875-black" }));
 		await fixture.t.run(async (ctx) => {
-			const variant = await ctx.db.query("catalogProductVariants")
-				.withIndex("by_revisionId_and_variantKey", (query) =>
-					query.eq("revisionId", print.revisionId).eq("variantKey", "matte-small")).unique();
+			const variant = (await ctx.db.query("catalogProductVariants")
+				.withIndex("by_revisionId_and_order", (query) => query.eq("revisionId", print.revisionId))
+				.collect()).find((row) => row.variantKey === "matte-small");
 			if (!variant) throw new Error("Missing variant fixture");
 			await ctx.db.patch(variant._id, { retailPriceCents: undefined });
 		});
 		await reject(item(print, "print"));
 		await fixture.t.run(async (ctx) => {
-			const variant = await ctx.db.query("catalogProductVariants")
-				.withIndex("by_revisionId_and_variantKey", (query) =>
-					query.eq("revisionId", print.revisionId).eq("variantKey", "matte-small")).unique();
+			const variant = (await ctx.db.query("catalogProductVariants")
+				.withIndex("by_revisionId_and_order", (query) => query.eq("revisionId", print.revisionId))
+				.collect()).find((row) => row.variantKey === "matte-small");
 			if (!variant) throw new Error("Missing variant fixture");
 			await ctx.db.patch(variant._id, { retailPriceCents: 4_200 });
 			await ctx.db.patch(fixture.printA, { sha256: "invalid" });
