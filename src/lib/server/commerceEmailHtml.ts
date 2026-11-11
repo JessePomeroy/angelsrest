@@ -524,47 +524,6 @@ function renderReceiptDocument(input: ReceiptDocument) {
 </html>`.replace(/>\s+</g, "><");
 }
 
-/** Preserved R9 stationery treatment for a one-line design rollback or later reuse. */
-export function renderClassicOrderConfirmationEmailHtml(
-	input: Extract<CustomerCommerceEmailInput, { kind: "order_confirmation" }>,
-) {
-	const items = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 8px;">${renderItems(input.items)}</table>`;
-	const delivery =
-		input.delivery.kind === "digital"
-			? section(
-					"Your files are ready",
-					`${paragraph("Your download link will remain active. If you open it from a new browser, enter the email address used at checkout to verify the order.")}${actionBlock("Download your purchase", input.delivery.downloadUrl)}`,
-				)
-			: `${section(
-					"Shipping address",
-					`<address style="margin: 14px 0 0; color: #5f5750; font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-style: normal; line-height: 1.65; overflow-wrap: anywhere; word-break: break-word;">${escapedLines(input.delivery.shippingAddress)}</address>${actionBlock("View order status", input.delivery.statusUrl)}`,
-				)}${section(
-					"What happens next",
-					numberedSteps([
-						"We are arranging fulfillment for your order.",
-						"You can check progress on your order status page.",
-						"We will email tracking information as soon as your order ships.",
-					]),
-				)}`;
-
-	return renderDocument({
-		audience: "customer",
-		siteName: input.brand.siteName,
-		homeUrl: input.brand.homeUrl,
-		documentTitle: "Order receipt",
-		preheader: `${input.brand.siteName} received your payment for order ${input.orderId}.`,
-		eyebrow: "Order received",
-		title: "Thank you for your order.",
-		intro: `Hi ${input.customerName}, we have received your order and payment.`,
-		summary: [
-			{ label: "Order ID", value: input.orderId },
-			{ label: "Total", value: input.total },
-		],
-		body: `${section("Items ordered", items, { compact: true })}${delivery}`,
-		footer: `Questions about your order? Reply to this email and we will help. Thank you for supporting ${input.brand.siteName}.`,
-	});
-}
-
 function renderOrderReceipt(
 	input: Extract<CustomerCommerceEmailInput, { kind: "order_confirmation" }>,
 ) {
