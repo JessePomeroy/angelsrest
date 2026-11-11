@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../../../packages/crm-api/convex/_generated/api";
 import { CLIENT_PRINT_REFUND_RETRY_MS } from "../../../../packages/crm-api/convex/helpers/clientPrintRefunds";
 import schema from "../../../../packages/crm-api/convex/schema";
+import { STRIPE_API_VERSION } from "../../../../packages/crm-api/src/stripeContract";
 import { runClientPrintRefund } from "../clientPrintRefunds.server";
-import { STRIPE_API_VERSION } from "../stripeApiVersion";
 
 const env = vi.hoisted(() => ({
 	WEBHOOK_SECRET: "client-print-refund-secret-0123456789abcdef",

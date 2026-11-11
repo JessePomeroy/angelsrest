@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { getStripeSecretKey } from "$lib/server/runtimeConfig";
-import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
+import { STRIPE_API_VERSION } from "../../../packages/crm-api/src/stripeContract";
 
 let _stripe: Stripe | null = null;
 

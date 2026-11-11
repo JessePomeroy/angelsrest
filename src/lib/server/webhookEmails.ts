@@ -132,7 +132,7 @@ export async function sendCustomerShipmentNotification(
 }
 
 /** Format shipping address for emails */
-export function formatShippingAddress(shippingDetails: ShippingDetails): string {
+function formatShippingAddress(shippingDetails: ShippingDetails): string {
 	if (!shippingDetails?.address) return "No shipping address";
 	const { name, address } = shippingDetails;
 	return [

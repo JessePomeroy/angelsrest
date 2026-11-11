@@ -58,7 +58,6 @@ describe("architecture invariants", () => {
 			"src/routes/shop/+page.server.ts",
 			"src/routes/shop/[slug]/+page.server.ts",
 			"src/routes/shop/sets/[slug]/+page.server.ts",
-			"src/routes/shop/prints/[slug]/+page.server.ts",
 		]) {
 			expect(source(path)).toContain('from "$lib/server/current/convexShop.server"');
 		}

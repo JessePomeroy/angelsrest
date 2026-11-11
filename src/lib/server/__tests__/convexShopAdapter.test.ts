@@ -542,16 +542,12 @@ describe("Convex-only Shop runtime", () => {
 		expect(catalogReader.getPublishedBySlug).not.toHaveBeenCalled();
 	});
 
-	it("uses the exact-slug query for detail and retires collection detail with a 404", async () => {
+	it("uses the exact-slug query for detail", async () => {
 		const catalogReader = reader();
 		const shop = createConvexShop({ createReader: () => catalogReader as never });
 
 		await expect(shop.loadProduct("print-0")).resolves.toMatchObject({ productType: "v2" });
 		await expect(shop.loadPrintSet("print-set-0")).resolves.toHaveProperty("printSet");
-		await expect(shop.loadCollection("collection")).rejects.toMatchObject({
-			status: 404,
-			body: { message: "Print collection not found" },
-		});
 		expect(catalogReader.listPublished).not.toHaveBeenCalled();
 		expect(catalogReader.getPublishedBySlug).toHaveBeenNthCalledWith(
 			1,

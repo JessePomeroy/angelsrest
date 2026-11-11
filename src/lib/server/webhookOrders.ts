@@ -22,7 +22,7 @@ import {
 	PrintReconciliationAlertRetryableError,
 	PrintReconciliationPendingError,
 	ProviderSubmissionClosedRetryableError,
-	sendClaimedFulfillmentFailureAdminAlert,
+	sendClaimedAutomatedRefundNotification,
 	submitPrintFulfillment,
 } from "$lib/server/printFulfillment";
 import type { OrderEmailSession, ShippingDetails } from "$lib/server/webhookEmails";
@@ -312,9 +312,10 @@ export async function finishRecordedPrintOrder(
 		const manuallyRefunded = existingStatus === "refunded" && existingRecoveryStatus === undefined;
 		const errorSummary = existingFulfillmentError ?? "Permanent fulfillment failure";
 		if (!manuallyRefunded) {
-			await sendClaimedFulfillmentFailureAdminAlert(
+			await sendClaimedAutomatedRefundNotification(
 				{ convex, resend },
 				{
+					audience: "admin",
 					orderId,
 					orderNumber,
 					customerEmail: session.customer_details?.email ?? "unknown",

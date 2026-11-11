@@ -8,6 +8,7 @@ import {
 } from "$lib/server/lumaprintsConnections";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
 import { getLumaPrintsRuntimeConfig } from "$lib/server/runtimeConfig";
+import { isRecord } from "$lib/server/validation";
 import type {
 	LumaPrintsOrder,
 	LumaPrintsOrderResponse,
@@ -163,10 +164,6 @@ function isLumaPrintsExternalId(value: string) {
 const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const CONTENT_ENCODINGS = new Set(["identity", "gzip", "br", "deflate"]);
 
-function object(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function exact(value: Record<string, unknown>, keys: string[]) {
 	return Object.keys(value).length === keys.length && keys.every((key) => key in value);
 }
@@ -281,7 +278,7 @@ async function readBoundedJson(
 }
 
 function parseOrderResponse(value: unknown): LumaPrintsOrderResponse {
-	if (!object(value)) {
+	if (!isRecord(value)) {
 		throw new LumaPrintsSubmissionError("Order submission response was malformed", "uncertain", {
 			phase: "envelope",
 		});
@@ -327,7 +324,7 @@ function matchingLabels(text: string, patterns: Record<string, RegExp>) {
 function diagnosticStrings(value: unknown): string[] {
 	if (typeof value === "string") return [value];
 	if (Array.isArray(value)) return value.flatMap(diagnosticStrings);
-	return object(value)
+	return isRecord(value)
 		? Object.entries(value).flatMap(([key, nested]) => [key, ...diagnosticStrings(nested)])
 		: [];
 }
@@ -343,7 +340,7 @@ async function rejectionDiagnostics(response: Response): Promise<LumaPrintsError
 			invalid,
 			invalid,
 		);
-		if (!object(body)) return { providerReason: "unrecognized" };
+		if (!isRecord(body)) return { providerReason: "unrecognized" };
 		const text = [
 			body.message,
 			body.error,
@@ -468,7 +465,7 @@ async function submitOrder(
 		);
 	} catch (error) {
 		const details =
-			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
+			error instanceof LumaPrintsError && isRecord(error.details) ? error.details : null;
 		const kind = details?.kind === "timeout" ? "timeout" : "network";
 		throw new LumaPrintsSubmissionError(
 			kind === "timeout"
@@ -544,7 +541,7 @@ async function confirmConfiguredOrder(
 		});
 	} catch (error) {
 		const details =
-			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
+			error instanceof LumaPrintsError && isRecord(error.details) ? error.details : null;
 		if (details?.kind === "network" || details?.kind === "timeout") {
 			throw reconciliationRetryable("Order confirmation transport failed", "transport");
 		}
@@ -569,7 +566,7 @@ async function confirmConfiguredOrder(
 				"resource_bound",
 			),
 	);
-	if (!object(body) || typeof body.externalId !== "string") {
+	if (!isRecord(body) || typeof body.externalId !== "string") {
 		throw reconciliationFailure("Order confirmation response was malformed", "response_contract");
 	}
 	const confirmedOrderNumber = normalizeLumaPrintsProviderNumber(body.orderNumber);
@@ -600,7 +597,7 @@ function nonNegativeSafeInteger(value: unknown): value is number {
 
 function parseReconciliationPage(value: unknown, storeId: number): ReconciliationPage {
 	if (
-		!object(value) ||
+		!isRecord(value) ||
 		!exact(value, ["orders", "totalOrders", "currentPage", "totalPages"]) ||
 		!Array.isArray(value.orders) ||
 		!nonNegativeSafeInteger(value.totalOrders) ||
@@ -618,7 +615,7 @@ function parseReconciliationPage(value: unknown, storeId: number): Reconciliatio
 	}
 	const orders: ReconciliationPage["orders"] = [];
 	for (const row of value.orders) {
-		if (!object(row) || typeof row.externalId !== "string" || row.externalId.length === 0) {
+		if (!isRecord(row) || typeof row.externalId !== "string" || row.externalId.length === 0) {
 			throw reconciliationFailure("Order reconciliation row was malformed", "response_contract");
 		}
 		const orderNumber = normalizeLumaPrintsProviderNumber(row.orderNumber);
@@ -672,7 +669,7 @@ async function findConfiguredOrderByExternalId(
 		} catch (error) {
 			if (Date.now() >= deadline) throw timeBoundFailure();
 			const details =
-				error instanceof LumaPrintsError && object(error.details) ? error.details : null;
+				error instanceof LumaPrintsError && isRecord(error.details) ? error.details : null;
 			if (details?.kind === "network" || details?.kind === "timeout") {
 				throw reconciliationRetryable("Order reconciliation transport failed", "transport");
 			}
@@ -827,7 +824,7 @@ async function verifyStoreAccess(config: ProviderConfiguration): Promise<void> {
 	if (!Array.isArray(body) || body.length > 1000) throw failed();
 	const stores = new Set<string>();
 	for (const row of body) {
-		if (!object(row) || typeof row.storeName !== "string" || row.storeName.length > 1000)
+		if (!isRecord(row) || typeof row.storeName !== "string" || row.storeName.length > 1000)
 			throw failed();
 		const storeId = normalizeLumaPrintsProviderNumber(row.storeId);
 		if (storeId === null || stores.has(storeId)) throw failed();

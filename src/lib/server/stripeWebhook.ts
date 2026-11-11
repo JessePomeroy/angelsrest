@@ -1,7 +1,7 @@
 import { error } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { logStructured } from "$lib/server/logger";
-import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
+import { STRIPE_API_VERSION } from "../../../packages/crm-api/src/stripeContract";
 
 /**
  * Read the raw body and signature once, then verify against one or more

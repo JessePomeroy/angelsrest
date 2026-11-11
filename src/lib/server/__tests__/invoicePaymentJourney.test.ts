@@ -9,9 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "../../../../packages/crm-api/convex/_generated/api";
 import schema from "../../../../packages/crm-api/convex/schema";
 import { invoiceBalance } from "../../../../packages/crm-api/src/invoiceAmounts";
+import { STRIPE_API_VERSION } from "../../../../packages/crm-api/src/stripeContract";
 import { POST as checkout } from "../../../routes/api/invoice/checkout/+server";
 import { POST as webhook } from "../../../routes/api/webhooks/stripe/+server";
-import { STRIPE_API_VERSION } from "../stripeApiVersion";
 
 const boundary = vi.hoisted(() => ({
 	getStripe: vi.fn(),

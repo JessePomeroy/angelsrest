@@ -5,7 +5,6 @@ import { api } from "$convex/api";
 import type { Doc, Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import { getStripeSecretKey } from "$lib/server/runtimeConfig";
-import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 import {
 	type ApplicationFeeObservation,
@@ -19,6 +18,7 @@ import {
 	ApplicationFeeReadError,
 	readApplicationFee,
 } from "../../../packages/crm-api/convex/helpers/readApplicationFee";
+import { STRIPE_API_VERSION } from "../../../packages/crm-api/src/stripeContract";
 
 const READ_OPTIONS = { timeout: 5_000, maxNetworkRetries: 0 } as const;
 const AUTOMATION = "client_print_refund_v1";

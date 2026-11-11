@@ -1,27 +1,13 @@
 /** Pure, dependency-free HTML rendering for the public contact owner notification. */
 
+import { escapedLines, escapeHtml } from "./emailHtml";
+
 export interface ContactOwnerNotificationFacts {
 	brand?: string;
 	name: string;
 	email: string;
 	subject?: string;
 	message: string;
-}
-
-const HTML_ESCAPE: Record<string, string> = {
-	"&": "&amp;",
-	"<": "&lt;",
-	">": "&gt;",
-	'"': "&quot;",
-	"'": "&#39;",
-};
-
-function escapeHtml(value: string) {
-	return value.replace(/[&<>"']/g, (character) => HTML_ESCAPE[character] ?? character);
-}
-
-function escapedLines(value: string) {
-	return value.split(/\r?\n/).map(escapeHtml).join("<br>");
 }
 
 function factRow(label: string, value: string) {

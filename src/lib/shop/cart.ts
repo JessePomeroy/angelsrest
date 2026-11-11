@@ -104,7 +104,7 @@ export function parseCartState(value: unknown): CartState | null {
 	return { items, updatedAt: value.updatedAt };
 }
 
-export function itemMatchKey(
+function itemMatchKey(
 	item: Pick<
 		CartItem,
 		| "productSlug"

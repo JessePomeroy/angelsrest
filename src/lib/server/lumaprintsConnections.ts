@@ -1,6 +1,7 @@
 import type { Doc } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import { isStagingEnvironment } from "$lib/server/runtimeConfig";
+import { isRecord } from "$lib/server/validation";
 
 export type LumaPrintsConnection = Readonly<
 	Pick<
@@ -19,13 +20,9 @@ function unavailable(): never {
 	throw new Error("LumaPrints connection configuration is unavailable");
 }
 
-function object(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isConnection(value: unknown): value is LumaPrintsConnection {
 	return (
-		object(value) &&
+		isRecord(value) &&
 		value.version === 1 &&
 		typeof value.connectionRef === "string" &&
 		CONNECTION_REF.test(value.connectionRef) &&
@@ -61,7 +58,7 @@ function readRegistry() {
 		unavailable();
 	}
 	if (
-		!object(registry) ||
+		!isRecord(registry) ||
 		Object.keys(registry).length !== 2 ||
 		registry.version !== 1 ||
 		!Array.isArray(registry.connections) ||

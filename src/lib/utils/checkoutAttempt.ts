@@ -6,7 +6,7 @@ export interface CheckoutAttempt {
 
 const MAX_LOCAL_AGE_MS = (23 * 60 + 25) * 60 * 1000;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-export const CHECKOUT_ATTEMPT_REQUIRED = "CHECKOUT_ATTEMPT_REQUIRED";
+const CHECKOUT_ATTEMPT_REQUIRED = "CHECKOUT_ATTEMPT_REQUIRED";
 
 export class CheckoutAttemptTracker {
 	#current: (CheckoutAttempt & { intent: string; retainedAt: number }) | null = null;
@@ -42,7 +42,7 @@ export class CheckoutAttemptTracker {
 	}
 }
 
-export function checkoutAttemptResponse(result: unknown) {
+function checkoutAttemptResponse(result: unknown) {
 	if (!result || typeof result !== "object" || Array.isArray(result)) return null;
 	const record = result as Record<string, unknown>;
 	const body =

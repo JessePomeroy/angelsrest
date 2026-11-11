@@ -60,7 +60,7 @@ export function buildScramblePool(charSet: string): string {
 /**
  * Pick a random character from the scramble pool.
  */
-export function getRandomChar(scramblePool: string): string {
+function getRandomChar(scramblePool: string): string {
 	return scramblePool[Math.floor(Math.random() * scramblePool.length)];
 }
 

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { CatalogBoundaryError } from "$lib/server/catalogCommerceClients";
+import { CurrentCheckoutCommerceError } from "$lib/server/checkoutFailures";
 import {
 	type CurrentCheckoutCommerceDependencies,
-	CurrentCheckoutCommerceError,
 	resolveCurrentCheckoutCommerce,
 } from "$lib/server/current/currentCheckoutCommerce.server";
 

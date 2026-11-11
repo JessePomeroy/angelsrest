@@ -5,6 +5,7 @@ import {
 	COMMERCE_TENANT_ID_PATTERN,
 	normalizeCommerceTenantSiteUrl,
 } from "$lib/server/stripeConnect";
+import { isRecord } from "$lib/server/validation";
 
 type Identity = {
 	tenantId: string;
@@ -17,9 +18,6 @@ type Identity = {
 };
 function unavailable(): never {
 	throw new Error("Client commerce email identity is unavailable");
-}
-function object(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function domain(value: unknown): value is string {
 	return (
@@ -41,7 +39,7 @@ function mailbox(value: unknown): value is string {
 }
 function identity(value: unknown): value is Identity {
 	return (
-		object(value) &&
+		isRecord(value) &&
 		Object.keys(value).length === 7 &&
 		typeof value.tenantId === "string" &&
 		COMMERCE_TENANT_ID_PATTERN.test(value.tenantId) &&
@@ -75,7 +73,7 @@ function registry() {
 		unavailable();
 	}
 	if (
-		!object(parsed) ||
+		!isRecord(parsed) ||
 		Object.keys(parsed).length !== 2 ||
 		parsed.version !== 1 ||
 		!Array.isArray(parsed.clients) ||

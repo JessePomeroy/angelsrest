@@ -204,15 +204,7 @@ export async function processStripeWebhookEvent(
 					}
 				}
 				if (refundResult.kind === "automated_succeeded") {
-					const notification = {
-						orderId: refundResult.orderId,
-						orderNumber: refundResult.orderNumber,
-						customerEmail: refundResult.customerEmail,
-						errorSummary: refundResult.errorSummary,
-						stripeRefundId: refundResult.stripeRefundId,
-						total: refundResult.total,
-						notificationProfile: refundResult.notificationProfile,
-					};
+					const { kind: _kind, ...notification } = refundResult;
 					await sendClaimedAutomatedRefundNotification(adapters, {
 						...notification,
 						audience: "admin",
@@ -222,29 +214,16 @@ export async function processStripeWebhookEvent(
 						audience: "customer",
 					});
 				} else if (refundResult.kind === "automated_failed") {
+					const { kind: _kind, ...notification } = refundResult;
 					await sendClaimedAutomatedRefundNotification(adapters, {
+						...notification,
 						audience: "refund_failure",
-						orderId: refundResult.orderId,
-						orderNumber: refundResult.orderNumber,
-						customerEmail: refundResult.customerEmail,
-						errorSummary: refundResult.errorSummary,
-						stripeRefundId: refundResult.stripeRefundId,
-						refundStatus: refundResult.refundStatus,
-						total: refundResult.total,
-						notificationProfile: refundResult.notificationProfile,
 					});
 				} else if (refundResult.kind === "automated_attention") {
+					const { kind: _kind, ...notification } = refundResult;
 					await sendClaimedAutomatedRefundNotification(adapters, {
+						...notification,
 						audience: "refund_attention",
-						orderId: refundResult.orderId,
-						orderNumber: refundResult.orderNumber,
-						customerEmail: refundResult.customerEmail,
-						errorSummary: refundResult.errorSummary,
-						stripeRefundId: refundResult.stripeRefundId,
-						refundStatus: refundResult.refundStatus,
-						attentionReason: refundResult.attentionReason,
-						total: refundResult.total,
-						notificationProfile: refundResult.notificationProfile,
 					});
 				}
 				break;

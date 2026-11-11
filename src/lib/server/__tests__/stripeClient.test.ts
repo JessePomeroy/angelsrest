@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
+import { STRIPE_API_VERSION } from "../../../../packages/crm-api/src/stripeContract";
 
 const constructStripe = vi.hoisted(() => vi.fn());
 const privateEnv = vi.hoisted(

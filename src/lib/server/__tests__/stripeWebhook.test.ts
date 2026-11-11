@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
 import { verifyStripeWebhook, verifyStripeWebhookWithRole } from "$lib/server/stripeWebhook";
+import { STRIPE_API_VERSION } from "../../../../packages/crm-api/src/stripeContract";
 
 const mockLogStructured = vi.hoisted(() => vi.fn());
 
