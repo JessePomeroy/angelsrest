@@ -4,7 +4,7 @@ import {
 	readCheckoutAdmissionRouting, readCheckoutRouting, retiredOrderSession, routingConflict,
 } from "./helpers/orderRouting";
 import { requireCreator } from "./authHelpers";
-import { recordOrderRevenue, readOrderRevenue, advanceOrderRevenueBackfill } from "./helpers/orderRevenue";
+import { recordOrderRevenue, readOrderRevenue, advanceOrderRevenueBackfill, seedEmptyOrderRevenue, type EmptyOrderRevenueSeed } from "./helpers/orderRevenue";
 import { requireSnapshotProductsNotDeleted } from "./helpers/catalogDeletion";
 import {
 	requestClientPrintRefund as requestPrintRefund, claimClientPrintRefund as claimPrintRefund,
@@ -56,7 +56,7 @@ import {
 import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
 import { isCurrentStripeAccountForSite, stripeAccountMatchesSite } from "./helpers/stripeAccountOwnership";
 import { assertSavedLumaPrintsConnection, captureCurrentLumaPrintsConnection, lumaprintsConnectionValidator, sameLumaPrintsConnection, type LumaPrintsConnection } from "./helpers/lumaprintsConnection";
-import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
+import { BULK_SCAN_LIMIT } from "./helpers/limits";
 import {
 	assertOrderNumberAvailable,
 	getNextOrderNumber as generateNextOrderNumber,
@@ -4501,6 +4501,24 @@ export const dashboardBackfillStatus = query({
 	},
 });
 
+/**
+ * One-time, idempotent operator migration. Starts every platform-client site
+ * that has no totals state and no orders on `ready` empty totals. Sites with
+ * orders are refused (`has_orders`) and still need the verified backfill.
+ * Re-run with `continueCursor` until `isDone`.
+ */
+export const seedEmptyDashboardTotals = internalMutation({
+	args: { cursor: v.optional(v.union(v.string(), v.null())), dryRun: v.optional(v.boolean()) },
+	handler: async (ctx, { cursor, dryRun }) => {
+		const page = await ctx.db.query("platformClients").paginate({ numItems: 25, cursor: cursor ?? null });
+		const results: Array<{ siteUrl: string; outcome: EmptyOrderRevenueSeed }> = [];
+		for (const client of page.page) {
+			results.push({ siteUrl: client.siteUrl, outcome: await seedEmptyOrderRevenue(ctx, client.siteUrl, dryRun !== true) });
+		}
+		return { results, continueCursor: page.continueCursor, isDone: page.isDone };
+	},
+});
+
 export const advanceDashboardBackfill = mutation({
 	args: { siteUrl: v.string(), cursor: v.union(v.string(), v.null()), phase: v.union(v.literal("copy"), v.literal("verify"), v.literal("compare")) },
 	handler: async (ctx, { siteUrl, cursor, phase }) => {
@@ -4510,168 +4528,10 @@ export const advanceDashboardBackfill = mutation({
 });
 
 async function readDashboardStats(ctx: QueryCtx, siteUrl: string) {
-		await requireSiteAdmin(ctx, siteUrl, "orders");
-		const maintained = await readOrderRevenue(ctx, siteUrl);
-		if (maintained) {
-			const recent = await ctx.db.query("orders").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(10);
-			return { ...maintained, recentOrders: recent.map(projectRecentOrder) };
-		}
-		const matchingOrders = ctx.db.query("orders")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc");
-		let totalOrders = 0;
-		let isTruncated = false;
-		const recentOrderRows: Doc<"orders">[] = [];
-
-		const now = new Date();
-		const todayStart = new Date(
-			now.getFullYear(),
-			now.getMonth(),
-			now.getDate(),
-		);
-		const weekStart = new Date(todayStart);
-		weekStart.setDate(todayStart.getDate() - todayStart.getDay());
-		const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-		let todayRevenue = 0;
-		let weekRevenue = 0;
-		let monthRevenue = 0;
-		let allTimeRevenue = 0;
-		const grossPaymentsByCurrency = new Map<string, {
-			todayMinorUnits: number;
-			weekMinorUnits: number;
-			monthMinorUnits: number;
-			allTimeMinorUnits: number;
-		}>();
-		const grossPaymentOrderCounts = new Map<string, number>();
-		const invalidAggregateCurrencies = new Set<string>();
-		let unknownCurrencyOrderCount = 0;
-		let invalidGrossAmountOrderCount = 0;
-
-		// Build daily revenue map for last 30 days
-		const dailyRevenueMap = new Map<string, number>();
-		const dailyGrossPaymentsByCurrency = new Map<string, Map<string, number>>();
-		for (let i = 29; i >= 0; i--) {
-			const d = new Date(todayStart);
-			d.setDate(d.getDate() - i);
-			dailyRevenueMap.set(d.toISOString().split("T")[0], 0);
-		}
-
-		// Stream the bounded scan: retain only the ten recent rows, not thousands
-		// of line-item arrays and frozen checkout snapshots.
-		for await (const order of matchingOrders) {
-			if (totalOrders === AGGREGATE_SCAN_LIMIT) { isTruncated = true; break; }
-			totalOrders++;
-			if (recentOrderRows.length < 10) recentOrderRows.push(order);
-			const total = order.total;
-			allTimeRevenue += total;
-
-			const orderDate = new Date(order._creationTime);
-			if (orderDate >= todayStart) todayRevenue += total;
-			if (orderDate >= weekStart) weekRevenue += total;
-			if (orderDate >= monthStart) monthRevenue += total;
-
-			if (!isStripeCurrency(order.stripePaymentCurrency)) {
-				unknownCurrencyOrderCount += 1;
-			} else if (!isNonnegativeSafeInteger(total)) {
-				invalidGrossAmountOrderCount += 1;
-			} else if (invalidAggregateCurrencies.has(order.stripePaymentCurrency)) {
-				invalidGrossAmountOrderCount += 1;
-			} else {
-				const grouped = grossPaymentsByCurrency.get(order.stripePaymentCurrency) ?? {
-					todayMinorUnits: 0,
-					weekMinorUnits: 0,
-					monthMinorUnits: 0,
-					allTimeMinorUnits: 0,
-				};
-				const next = {
-					allTimeMinorUnits: grouped.allTimeMinorUnits + total,
-					todayMinorUnits: grouped.todayMinorUnits
-						+ (orderDate >= todayStart ? total : 0),
-					weekMinorUnits: grouped.weekMinorUnits
-						+ (orderDate >= weekStart ? total : 0),
-					monthMinorUnits: grouped.monthMinorUnits
-						+ (orderDate >= monthStart ? total : 0),
-				};
-				if (Object.values(next).every(isNonnegativeSafeInteger)) {
-					grossPaymentsByCurrency.set(order.stripePaymentCurrency, next);
-					grossPaymentOrderCounts.set(
-						order.stripePaymentCurrency,
-						(grossPaymentOrderCounts.get(order.stripePaymentCurrency) ?? 0) + 1,
-					);
-				} else {
-					invalidGrossAmountOrderCount +=
-						(grossPaymentOrderCounts.get(order.stripePaymentCurrency) ?? 0) + 1;
-					grossPaymentsByCurrency.delete(order.stripePaymentCurrency);
-					grossPaymentOrderCounts.delete(order.stripePaymentCurrency);
-					invalidAggregateCurrencies.add(order.stripePaymentCurrency);
-				}
-			}
-
-			const dateKey = orderDate.toISOString().split("T")[0];
-			if (dailyRevenueMap.has(dateKey)) {
-				dailyRevenueMap.set(
-					dateKey,
-					(dailyRevenueMap.get(dateKey) || 0) + total,
-				);
-			}
-			if (
-				dailyRevenueMap.has(dateKey)
-				&& isStripeCurrency(order.stripePaymentCurrency)
-				&& isNonnegativeSafeInteger(total)
-			) {
-				const dailyForCurrency = dailyGrossPaymentsByCurrency.get(
-					order.stripePaymentCurrency,
-				) ?? new Map<string, number>();
-				dailyForCurrency.set(dateKey, (dailyForCurrency.get(dateKey) ?? 0) + total);
-				dailyGrossPaymentsByCurrency.set(order.stripePaymentCurrency, dailyForCurrency);
-			}
-		}
-
-		const dailyRevenue = Array.from(dailyRevenueMap.entries()).map(
-			([date, amount]) => ({ date, amount }),
-		);
-		const currencies = [...grossPaymentsByCurrency.keys()].sort();
-		const grossPayments = currencies.map((currency) => ({
-			currency,
-			orderCount: grossPaymentOrderCounts.get(currency) ?? 0,
-			...grossPaymentsByCurrency.get(currency)!,
-		}));
-		const dailyGrossPayments = currencies.flatMap((currency) =>
-			[...dailyRevenueMap.keys()].map((date) => ({
-				date,
-				currency,
-				amountMinorUnits: dailyGrossPaymentsByCurrency.get(currency)?.get(date) ?? 0,
-			})),
-		);
-		const legacyRevenueCurrency = currencies.length === 1
-			&& unknownCurrencyOrderCount === 0
-			&& invalidGrossAmountOrderCount === 0
-			? currencies[0]
-			: undefined;
-
-		const recentOrders = recentOrderRows.map(projectRecentOrder);
-
-		return {
-			stats: {
-				todayRevenue,
-				weekRevenue,
-				monthRevenue,
-				// Legacy field names are preserved for compatible clients. Consumers
-				// must use isTruncated before presenting these values as complete.
-				allTimeRevenue,
-				totalOrders,
-				isTruncated,
-				scanLimit: AGGREGATE_SCAN_LIMIT,
-				legacyRevenueCurrency,
-				legacyRevenueCurrencyUnsafe: legacyRevenueCurrency === undefined,
-			},
-			dailyRevenue,
-			grossPayments,
-			dailyGrossPayments,
-			unknownCurrencyOrderCount,
-			invalidGrossAmountOrderCount,
-			recentOrders,
-		};
+	await requireSiteAdmin(ctx, siteUrl, "orders");
+	const maintained = await readOrderRevenue(ctx, siteUrl);
+	const recent = await ctx.db.query("orders").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(10);
+	return { ...maintained, recentOrders: recent.map(projectRecentOrder) };
 }
 
 export const getStats = query({ args: { siteUrl: v.string() }, handler: (ctx, { siteUrl }) => readDashboardStats(ctx, siteUrl) });

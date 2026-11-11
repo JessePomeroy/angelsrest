@@ -66,7 +66,7 @@ export async function advanceOrderRevenueBackfill(ctx: MutationCtx, siteUrl: str
 			const expected = await ctx.db.query("orderRevenueVerificationTotals")
 				.withIndex("by_siteUrl_and_day_and_currency", (q) => q.eq("siteUrl", siteUrl).eq("day", row.day).eq("currency", row.currency)).unique();
 			if (!expected || expected.amount !== row.amount || expected.count !== row.count || expected.invalidCount !== row.invalidCount) {
-				throw new Error("Aggregate comparison failed; dashboard remains on the bounded scan");
+				throw new Error("Aggregate comparison failed; dashboard totals remain unavailable");
 			}
 		}
 		const update = { phase: page.isDone ? "ready" as const : "compare" as const, cursor: page.isDone ? null : page.continueCursor };
@@ -79,7 +79,7 @@ export async function advanceOrderRevenueBackfill(ctx: MutationCtx, siteUrl: str
 		if (state.phase === "copy") await recordOrderRevenue(ctx, order);
 		else {
 			const saved = await ctx.db.query("orderRevenueContributions").withIndex("by_orderId", (q) => q.eq("orderId", order._id)).unique();
-			if (!saved || !sameContribution(saved, orderRevenueContribution(order))) throw new Error("Revenue verification failed; dashboard remains on the bounded scan");
+			if (!saved || !sameContribution(saved, orderRevenueContribution(order))) throw new Error("Revenue verification failed; dashboard totals remain unavailable");
 			if (!saved.verified) {
 				await recordVerification(ctx, orderRevenueContribution(order));
 				await ctx.db.patch(saved._id, { verified: true });
@@ -94,9 +94,29 @@ export async function advanceOrderRevenueBackfill(ctx: MutationCtx, siteUrl: str
 	return { ...state, ...update };
 }
 
+export type EmptyOrderRevenueSeed = "seeded" | "would_seed" | "already_ready" | "backfill_in_progress" | "has_orders" | "has_totals";
+
+/**
+ * A site with no orders has exact, empty maintained totals, so it can start
+ * `ready` without the operator backfill. A site with any order or recorded total
+ * is refused: only the verified backfill may activate those totals.
+ */
+export async function seedEmptyOrderRevenue(ctx: MutationCtx, siteUrl: string, apply = true): Promise<EmptyOrderRevenueSeed> {
+	const state = await ctx.db.query("orderRevenueBackfills").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).unique();
+	if (state) return state.phase === "ready" ? "already_ready" : "backfill_in_progress";
+	if (await ctx.db.query("orders").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).first()) return "has_orders";
+	if (await ctx.db.query("orderRevenueTotals").withIndex("by_siteUrl_and_day_and_currency", (q) => q.eq("siteUrl", siteUrl)).first()) return "has_totals";
+	if (!apply) return "would_seed";
+	await ctx.db.insert("orderRevenueBackfills", { siteUrl, phase: "ready", cursor: null, copied: 0, verified: 0 });
+	return "seeded";
+}
+
+export const ORDER_REVENUE_NOT_READY = "Dashboard revenue totals are not ready for this site; run the dashboard backfill";
+
 export async function readOrderRevenue(ctx: QueryCtx, siteUrl: string) {
 	const state = await ctx.db.query("orderRevenueBackfills").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).unique();
-	if (state?.phase !== "ready") return null;
+	// Fail visibly: there is no historical-order scan fallback.
+	if (state?.phase !== "ready") throw new Error(ORDER_REVENUE_NOT_READY);
 	const today = new Date(); today.setUTCHours(0, 0, 0, 0);
 	const week = new Date(today); week.setUTCDate(today.getUTCDate() - today.getUTCDay());
 	const month = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
