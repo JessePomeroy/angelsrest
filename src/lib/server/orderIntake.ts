@@ -503,13 +503,14 @@ export async function handleCheckoutCompleted(
 			resend: adapters.resend,
 			getLumaPrintsClient: adapters.getLumaPrintsClient,
 			printJob: adapters.printJob,
-			onOrderRecorded: async (orderId, orderNumber) => {
+			onOrderRecorded: async (orderId, orderNumber, fulfillmentType) => {
 				receiptError = await sendOrderReceipt(adapters.convex, adapters.resend, orderId, {
 					session: fullSession,
 					customerEmail,
 					shippingDetails,
 					lineItems,
 					orderNumber,
+					fulfillmentType,
 					notificationProfile,
 				});
 			},
@@ -708,6 +709,7 @@ export async function deliverFulfillmentOutcome(
 				shippingDetails,
 				lineItems,
 				orderNumber: orderResult.orderNumber,
+				fulfillmentType: orderResult.fulfillmentType,
 				notificationProfile,
 			});
 		} catch (err) {

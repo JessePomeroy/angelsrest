@@ -165,6 +165,7 @@ const sends: Array<{
 					shippingDetails: null,
 					lineItems: [],
 					orderNumber: "ORD-001",
+					fulfillmentType: "self",
 					notificationProfile,
 				},
 				"receipt:fixture",

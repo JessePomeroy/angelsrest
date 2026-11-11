@@ -41,6 +41,8 @@ export interface CreatedOrderResult {
 	orderNumber: string;
 	_id: Id<"orders">;
 	alreadyExisted: boolean;
+	/** Convex-resolved fulfillment; customer mail must not infer it from Checkout metadata. */
+	fulfillmentType: Doc<"orders">["fulfillmentType"];
 	fulfillment: PrintFulfillmentOutcome;
 	notification: "success" | "failure" | "none";
 }
@@ -65,7 +67,11 @@ export async function createOrderInConvex(
 		convex: ConvexHttpClient;
 		resend: Resend;
 		getLumaPrintsClient: PrintProviderFactory;
-		onOrderRecorded?: (orderId: Id<"orders">, orderNumber: string) => Promise<void>;
+		onOrderRecorded?: (
+			orderId: Id<"orders">,
+			orderNumber: string,
+			fulfillmentType: Doc<"orders">["fulfillmentType"],
+		) => Promise<void>;
 		printJob?: PreparedPrintJob;
 	},
 	{
@@ -122,7 +128,7 @@ export async function createOrderInConvex(
 		orderId: orderNumber,
 		meta: { alreadyExisted },
 	});
-	await onOrderRecorded?.(orderId, orderNumber);
+	await onOrderRecorded?.(orderId, orderNumber, orderResult.fulfillmentType);
 	if (printJob && printJob.jobId !== orderResult.printJobId)
 		throw new Error("Print job does not match the paid order");
 	if (orderResult.printJobId && !printJob) {
@@ -130,6 +136,7 @@ export async function createOrderInConvex(
 			orderNumber,
 			_id: orderId,
 			alreadyExisted,
+			fulfillmentType: orderResult.fulfillmentType,
 			fulfillment: { kind: "scheduled" },
 			notification: "none",
 		};
@@ -235,6 +242,7 @@ export async function finishRecordedPrintOrder(
 			orderNumber,
 			_id: orderId,
 			alreadyExisted,
+			fulfillmentType,
 			fulfillment: { kind: "canceled" },
 			notification: "none",
 		};
@@ -266,6 +274,7 @@ export async function finishRecordedPrintOrder(
 			orderNumber,
 			_id: orderId,
 			alreadyExisted,
+			fulfillmentType,
 			fulfillment: manuallyRefunded
 				? { kind: "manual_refunded", stripeRefundId: existingStripeRefundId }
 				: {
@@ -320,6 +329,7 @@ export async function finishRecordedPrintOrder(
 			orderNumber,
 			_id: orderId,
 			alreadyExisted,
+			fulfillmentType,
 			fulfillment: manuallyRefunded
 				? { kind: "manual_refunded", stripeRefundId: existingStripeRefundId }
 				: {
@@ -354,6 +364,7 @@ export async function finishRecordedPrintOrder(
 			orderNumber,
 			_id: orderId,
 			alreadyExisted,
+			fulfillmentType,
 			fulfillment,
 			notification: "none",
 		};
@@ -387,6 +398,7 @@ export async function finishRecordedPrintOrder(
 			orderNumber,
 			_id: orderId,
 			alreadyExisted,
+			fulfillmentType,
 			fulfillment,
 			notification: fulfillment.kind === "permanent_failure_refunded" ? "failure" : "none",
 		};
@@ -476,6 +488,7 @@ export async function finishRecordedPrintOrder(
 		orderNumber,
 		_id: orderId,
 		alreadyExisted,
+		fulfillmentType,
 		fulfillment,
 		notification,
 	};

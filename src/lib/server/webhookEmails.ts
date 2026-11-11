@@ -9,6 +9,7 @@
 
 import type { Resend } from "resend";
 import type Stripe from "stripe";
+import type { Doc } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import { ADMIN_EMAIL } from "$lib/config/site";
 import {
@@ -20,6 +21,7 @@ import { resolveCommerceEmailIdentity } from "$lib/server/commerceEmailIdentity.
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
+	isHubSite,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import type { LumaPrintsReconciliationClass } from "$lib/server/lumaprints";
@@ -318,6 +320,7 @@ export async function sendCustomerConfirmation(
 		shippingDetails,
 		lineItems,
 		orderNumber,
+		fulfillmentType,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
 		session: OrderEmailSession;
@@ -325,13 +328,17 @@ export async function sendCustomerConfirmation(
 		shippingDetails: ShippingDetails;
 		lineItems: OrderEmailLineItem[];
 		orderNumber?: string;
+		/** The fulfillment recorded on the Convex order, not Checkout metadata. */
+		fulfillmentType: Doc<"orders">["fulfillmentType"];
 		notificationProfile?: CommerceNotificationProfile;
 	},
 	idempotencyKey?: string,
 ) {
 	const identity = resolveCommerceEmailIdentity(notificationProfile, "");
 	const origin = commerceOrigin(notificationProfile);
-	const isDigital = session.metadata?.isDigital === "true";
+	// Only the hub serves paid downloads from /checkout/success; tenant spokes keep the
+	// existing confirmation until they have a download page to link to.
+	const isDigital = fulfillmentType === "digital" && isHubSite(notificationProfile.siteUrl);
 	const orderReference = orderNumber ?? session.id;
 
 	const digitalSection = isDigital

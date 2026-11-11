@@ -105,6 +105,7 @@ describe("webhook customer emails", () => {
 				shippingDetails,
 				lineItems,
 				orderNumber: "ORD-001",
+				fulfillmentType: "lumaprints",
 			},
 			"order-receipt:customer:order-001",
 		);
@@ -182,6 +183,7 @@ https://angelsrest.online`);
 			shippingDetails,
 			lineItems: [],
 			orderNumber: "ORD-002",
+			fulfillmentType: "lumaprints",
 			notificationProfile: {
 				siteName: "Reflecting Pool",
 				siteUrl: "zippymiggy.com",
@@ -209,25 +211,21 @@ https://angelsrest.online`);
 		expect(payload.attachments).toBeUndefined();
 	});
 
-	it("keeps the tenant digital download path and falls back to the session reference", async () => {
+	it("sends the hub digital download path and falls back to the session reference", async () => {
 		const mockResend = resend();
 
 		await sendCustomerConfirmation(mockResend as any, {
-			session: { ...baseSession, metadata: { isDigital: "true" } },
+			session: baseSession,
 			customerEmail: "buyer@example.com",
 			shippingDetails: null,
 			lineItems,
-			notificationProfile: {
-				siteName: "Reflecting Pool",
-				siteUrl: "zippymiggy.com",
-				adminEmail: "maggie@example.com",
-			},
+			fulfillmentType: "digital",
 		});
 
 		const payload = mockResend.emails.send.mock.calls[0]?.[0];
 		if (!payload) throw new Error("expected digital confirmation email payload");
 		expect(mockResend.emails.send).toHaveBeenCalledOnce();
-		expect(payload.from).toBe("Reflecting Pool via Angel's Rest <orders@angelsrest.online>");
+		expect(payload.from).toBe("Angel's Rest <orders@angelsrest.online>");
 		expect(payload.to).toEqual(["buyer@example.com"]);
 		expect(payload.subject).toBe("Order received — cs_test_123");
 		expect(payload.text).toBe(`Hi Buyer,
@@ -242,23 +240,76 @@ ITEMS ORDERED
 • Archival print (2 × $12.50) — $25.00
 
 DOWNLOAD YOUR PURCHASE
-https://zippymiggy.com/checkout/success?session_id=cs_test_123
+https://angelsrest.online/checkout/success?session_id=cs_test_123
 
 Your download link will remain active. If you open it from a new browser, enter the email address used at checkout to verify the order.
 
 If you have any questions, just reply to this email.
 
-Thank you for supporting Reflecting Pool!
+Thank you for supporting Angel's Rest!
 
 Best regards,
-Reflecting Pool
-https://zippymiggy.com`);
+Angel's Rest
+https://angelsrest.online`);
 		expect(payload.html).toMatch(/>Download purchase<\/span><\/span><\/a>/);
 		expect(
-			payload.html?.match(/https:\/\/zippymiggy\.com\/checkout\/success\?session_id=cs_test_123/g),
+			payload.html?.match(
+				/https:\/\/angelsrest\.online\/checkout\/success\?session_id=cs_test_123/g,
+			),
 		).toHaveLength(3);
 		expect(payload.html).not.toContain("Shipping address");
 		expect(payload.html).not.toContain("View order status");
+	});
+
+	it("keeps tenant digital orders on the existing confirmation until spokes serve downloads", async () => {
+		const mockResend = resend();
+
+		await sendCustomerConfirmation(mockResend as any, {
+			session: baseSession,
+			customerEmail: "buyer@example.com",
+			shippingDetails: null,
+			lineItems,
+			fulfillmentType: "digital",
+			notificationProfile: {
+				siteName: "Tenant Studio",
+				siteUrl: "tenant.example",
+				adminEmail: "owner@example.com",
+			},
+		});
+
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		if (!payload) throw new Error("expected tenant confirmation email payload");
+		expect(payload.from).toBe("Tenant Studio via Angel's Rest <orders@angelsrest.online>");
+		expect(payload.text).not.toContain("DOWNLOAD YOUR PURCHASE");
+		expect(payload.text).not.toContain("/checkout/success");
+		expect(payload.html).not.toContain("/checkout/success");
+	});
+
+	it.each([
+		{ fulfillmentType: "lumaprints", isDigital: "true", delivery: "SHIPPING ADDRESS" },
+		{ fulfillmentType: "self", isDigital: "true", delivery: "SHIPPING ADDRESS" },
+		{ fulfillmentType: "digital", isDigital: "false", delivery: "DOWNLOAD YOUR PURCHASE" },
+	] as const)("ignores isDigital=$isDigital metadata for a $fulfillmentType order", async ({
+		fulfillmentType,
+		isDigital,
+		delivery,
+	}) => {
+		const mockResend = resend();
+
+		await sendCustomerConfirmation(mockResend as any, {
+			session: { ...baseSession, metadata: { isDigital } },
+			customerEmail: "buyer@example.com",
+			shippingDetails,
+			lineItems,
+			orderNumber: "ORD-004",
+			fulfillmentType,
+		});
+
+		const text = mockResend.emails.send.mock.calls[0]?.[0].text;
+		expect(text).toContain(delivery);
+		expect(text).not.toContain(
+			delivery === "SHIPPING ADDRESS" ? "DOWNLOAD YOUR PURCHASE" : "SHIPPING ADDRESS",
+		);
 	});
 
 	it("still propagates a thrown confirmation delivery failure after one send attempt", async () => {
@@ -274,6 +325,7 @@ https://zippymiggy.com`);
 				shippingDetails,
 				lineItems,
 				orderNumber: "ORD-003",
+				fulfillmentType: "lumaprints",
 			}),
 		).rejects.toBe(deliveryFailure);
 		expect(mockResend.emails.send).toHaveBeenCalledOnce();
@@ -293,6 +345,7 @@ https://zippymiggy.com`);
 				shippingDetails,
 				lineItems,
 				orderNumber: "ORD-003",
+				fulfillmentType: "lumaprints",
 			}),
 		).rejects.toThrow("Resend rejected confirmation");
 		expect(mockResend.emails.send).toHaveBeenCalledOnce();
@@ -611,6 +664,7 @@ https://zippymiggy.com`);
 						shippingDetails,
 						lineItems,
 						orderNumber: "ORD-011",
+						fulfillmentType: "lumaprints",
 					}),
 			],
 			[
