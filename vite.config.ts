@@ -47,19 +47,6 @@ export default defineConfig(({ isSsrBuild }) => ({
 	build: {
 		minify: "esbuild",
 		chunkSizeWarningLimit: 900,
-		rollupOptions: {
-			onLog(level, log, handler) {
-				if (
-					level === "warn" &&
-					typeof log.message === "string" &&
-					log.message.includes("Module level directives cause errors when bundled") &&
-					log.message.includes("framer-motion")
-				) {
-					return;
-				}
-				handler(level, log);
-			},
-		},
 	},
 	server: {
 		fs: {
@@ -68,11 +55,7 @@ export default defineConfig(({ isSsrBuild }) => ({
 	},
 	test: {
 		server: { deps: { inline: [/@jessepomeroy[+/]admin/] } },
-		include: [
-			"src/**/*.test.ts",
-			"packages/crm-api/convex/**/*.test.ts",
-			"scripts/commerce/**/*.test.ts",
-		],
+		include: ["src/**/*.test.ts", "packages/crm-api/convex/**/*.test.ts"],
 		environment: "node",
 		globals: true,
 		alias: {
