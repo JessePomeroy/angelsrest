@@ -1,8 +1,9 @@
 # Observed evidence
 
 Verified 2026-11-09 against HEAD
-`187ca087f859999a7f0b5c82779f39bc89b6e28b` and the hashes in
-[source-snapshot.json](source-snapshot.json). The checkout began clean. All new
+`187ca087f859999a7f0b5c82779f39bc89b6e28b` and the hashes then recorded in
+[source-snapshot.json](source-snapshot.json); those records were refreshed after
+the [2026-11-11 review](#source-refresh-review-2026-11-11). The checkout began clean. All new
 files were task-owned; application, schema, generated sources, manifests, CI and
 shared documentation remained unchanged during the initial pilot. The authorized
 retention follow-up adds only the skill allowlist and verification-guide entry.
@@ -202,11 +203,11 @@ diffed against the exact revision whose content matched its recorded hash.
 | Change | Source | Model impact |
 | --- | --- | --- |
 | Customer confirmation uses the Convex-returned `fulfillmentType` (`orderIntake.ts`, `webhookOrders.ts`) | #778 | None. The value is read from the `orders.create` result after the transaction and only feeds post-commit email. |
-| Snapshot checkouts ignore `isDigital` metadata (`webhookOrderPayload.ts`) | #778 | None. The hub never set that metadata, so `orders.create` arguments are byte-identical for hub-created sessions. The existing-order replay returns before the value is used, and handle omission on replay is unchanged. |
+| Snapshot checkouts ignore `isDigital` metadata (`webhookOrderPayload.ts`) | #778 | None. The current hub no longer stamps that metadata (the retired Sanity path did before #488), so first-create arguments are unchanged for hub-created sessions. On an existing-order replay the payload's `fulfillmentType` can now be `"self"` where metadata said `"true"`; the bridge probe's replay exercises this. `orders.create` returns the saved order and its stored `fulfillmentType` before reading that argument, and handle omission on replay is unchanged. |
 | `isHubSite` exported (`commerceTenant.ts`) | #778 | None; same function, now importable. |
 | Refund notifications spread the result minus `kind`; the admin-alert wrapper is inlined (`orderIntake.ts`, `webhookOrders.ts`, `printFulfillment.ts`) | #781 | None. These are post-commit effects with the same fields. |
-| Unused dev dependencies and overrides removed (`package.json`, `pnpm-lock.yaml`) | #779 | None. The pinned Vitest 4.1.12, convex 1.49.0, convex-test 0.0.52 and @edge-runtime/vm 5.0.0 are unchanged. |
-| Catalog test fixtures moved and catalog private-asset helpers shared (copied CRM tree) | #777 | None. `orders.ts`, `helpers/orderRouting.ts` and the reservation code import none of them. |
+| Unused dev dependencies and overrides removed; `jsdom` declared directly instead of resolving only as an optional Vitest dependency (`package.json`, `pnpm-lock.yaml`) | #779 | None. The pinned Vitest 4.1.12, convex 1.49.0, convex-test 0.0.52 and @edge-runtime/vm 5.0.0 are unchanged, and the reused suites run in the edge runtime, not jsdom. |
+| Catalog test fixtures moved and catalog private-asset helpers shared (copied CRM tree) | #777 | None. The modeled code reaches these files only transitively: `orders.ts` through `catalogCommerce.ts`/`catalogProductGraphData.ts`, `schema.ts` through its validators, and `orders.test.ts` through `test/catalogProductGraphFixtures.ts`. The #777 changes are verbatim moves and renames with identical values and fields. |
 
 Route selection, the single `orders.create` lookup, consume and insert
 transaction, reservation consumption, replay handle omission and the producer
@@ -227,4 +228,7 @@ checkout, reported `Pilot status: pass`. Every count matches the
 The retained local evidence, including the candidate hash patch and the run log,
 is in the ignored `test-results/order-intake-state-review-20261111/`. Only the
 recorded hashes, heads and tree digest changed; no model, control, probe or
-bound was edited.
+bound was edited. `initial_git_status` still describes the original recording.
+The refresh run's checkout differed from `19bf2031` only in these two snapshot
+records, whose committed heads and scope wording were finalised after the run;
+the source hashes and tree digest are identical to the ones verified.
