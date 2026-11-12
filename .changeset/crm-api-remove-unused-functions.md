@@ -4,7 +4,7 @@
 
 Remove Convex functions that no current host, shared admin release, client site or Worker calls. Each was checked against the hub, Admin 7, Queen Worm, Reflecting Pool and the gallery Worker before removal.
 
-Hosts must be on `@jessepomeroy/admin` 7.0.0 or later before this backend is deployed. Admin 6.16.2, which Queen Worm pins, still binds `emailLog.create` in its standard API config, although it never calls it.
+Deploying this backend requires only that no deployed consumer calls a removed function, which held on 2026-11-11. Installed admin builds 6.16.2 (Queen Worm) and 3.41.6 (archived Reflecting Pool) call none of them. 6.16.2 only binds the `emailLog.create` reference without calling it, so it keeps working at runtime. A host must be on `@jessepomeroy/admin` 7.0.0 or later before it adopts these crm-api 7 types, because admin 6.x's standard API type still names `emailLog.create`.
 
 Removed functions:
 
