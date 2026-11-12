@@ -169,7 +169,9 @@ called only V5 since #518 (2026-09-05), and no production rollback candidate
 older than that is retained for this retirement.
 
 Before the Convex deploy, re-count `galleryDownloads` in every target deployment
-(`pnpm exec convex data galleryDownloads --deployment <name> --limit 1`). Until
+from `packages/crm-api`: `pnpm exec convex data galleryDownloads --deployment
+loyal-swan-967 --limit 1` for production and `--deployment rosy-firefly-366` for
+staging. Until
 then `galleries.logDownload` is still a live mutation, so rows could appear. Stop
 if any exist.
 
