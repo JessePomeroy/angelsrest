@@ -106,7 +106,7 @@ test("new sites start with ready empty totals and dashboards read them without s
 	await expect(t.query(api.orders.getStats, { siteUrl })).rejects.toThrow();
 });
 
-test("site creation and renames never activate totals for a site that already has orders", async () => {
+test("site creation never activates totals for a site with orders; a rename starts the new empty domain ready", async () => {
 	const t = convexTest(schema, modules);
 	const email = "owner@fixture.example";
 	await t.run(async (ctx) => {

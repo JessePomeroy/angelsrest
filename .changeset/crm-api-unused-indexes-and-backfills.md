@@ -10,4 +10,5 @@ totals and no longer fall back to scanning historical orders: a site without
 `ready` totals gets an explicit error. New sites without orders start `ready`,
 and the internal `orders.seedEmptyDashboardTotals` migration seeds existing
 empty sites. The public `api` surface and the `getStats`/`getStatsForDay`
-return types are unchanged.
+return types are unchanged; the generated `internal` and `dataModel` types drop
+the removed internal mutations and the `businessSearchMigrations` table.

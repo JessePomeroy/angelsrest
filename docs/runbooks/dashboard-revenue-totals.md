@@ -21,6 +21,28 @@ The historical-order scan fallback was removed on 2026-11-11. A site whose
   Never insert or patch a `ready` row by hand.
 - **Existing sites without orders.** Run the one-time migration below.
 
+## Before the Convex deploy (read-only)
+
+The deploy removes the scan immediately, so check every platform client first.
+From `packages/crm-api`, list the client sites, their backfill rows and their
+order counts without printing customer data:
+
+```zsh
+pnpm exec convex data platformClients --deployment loyal-swan-967 --format jsonl | jq -r .siteUrl
+pnpm exec convex data orderRevenueBackfills --deployment loyal-swan-967 --format jsonl | jq -r '[.siteUrl, .phase] | @tsv'
+pnpm exec convex data orders --deployment loyal-swan-967 --format jsonl --limit 10000 | jq -r .siteUrl | sort | uniq -c
+```
+
+Stop, and run the verified operator backfill for that site first, if any client
+site has orders but no `ready` row, or has a row that is not `ready`. Only sites
+with no orders may rely on the empty-site migration below. On 2026-11-11 the
+production result was two client rows: `angelsrest.online` (`ready`, all 14
+orders) and `queenworm.angelsrest.online` (no row, no orders).
+
+Repeat the same three reads against staging (`--deployment rosy-firefly-366`),
+and confirm its `businessSearchMigrations` rows are all `done`, before deploying
+this backend there. Then run the migration below against staging as well.
+
 ## One-time empty-site migration
 
 `orders:seedEmptyDashboardTotals` is an idempotent internal mutation. It reads 25
@@ -49,6 +71,11 @@ pnpm exec convex run --prod orders:seedEmptyDashboardTotals '{"cursor":"CONTINUE
 As of 2026-11-11, `angelsrest.online` is `ready` and the platform client
 `queenworm.angelsrest.online` has no row and no orders, so the expected result is
 `seeded` for that client and `already_ready` for the hub. Re-running reports
-`already_ready` for both. Deploy the backend containing this change before
+`already_ready` for both.
+
+A site rename starts the new domain with an empty `ready` row only when that
+domain has no orders. Orders recorded under the old domain stay keyed to it, as
+they always were. Re-homing historical orders to a new domain is a separate,
+reviewed operator change that must also rebuild that domain's totals. Deploy the backend containing this change before
 running the migration. Until it runs, `queenworm.angelsrest.online` shows the
 dashboard's unavailable order report.
