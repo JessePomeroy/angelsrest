@@ -120,11 +120,10 @@ function checkout(itemValue: ReturnType<typeof item>) {
 	return { version: 1, purpose: "checkout", item: itemValue } as const;
 }
 
-async function resolve(fixture: Fixture, request: CatalogCommerceRequest) {
-	return await fixture.t.query(internal.orders.catalogCommerce, {
-		siteUrl: SITE_A.siteUrl,
-		request,
-	});
+async function resolve(fixture: Fixture, request: CatalogCommerceRequest, siteUrl = SITE_A.siteUrl) {
+	const result = await fixture.t.query(internal.orders.catalogCommerceHttp, { siteUrl, request });
+	if (result.outcome !== "resolved") throw new Error(`Catalog commerce resolution ${result.outcome}`);
+	return result.value;
 }
 
 async function seedOrder(
@@ -529,9 +528,7 @@ describe("paid catalog commerce", () => {
 		await fixture.t.run((ctx) => ctx.db.patch(fixture.paidA, { sha256: "9".repeat(64) }));
 		await expect(resolve(fixture, paid("paid_fulfillment"))).rejects.toThrow();
 		await expect(resolve(fixture, paid("paid_download", SESSION, 1))).rejects.toThrow();
-		await expect(fixture.t.query(internal.orders.catalogCommerce, {
-			siteUrl: SITE_B.siteUrl, request: paid("paid_download"),
-		})).rejects.toThrow();
+		await expect(resolve(fixture, paid("paid_download"), SITE_B.siteUrl)).rejects.toThrow();
 		await fixture.t.run(async (ctx) => {
 			const order = await ctx.db.query("orders")
 				.withIndex("by_stripeSessionId", (query) => query.eq("stripeSessionId", SESSION)).unique();
@@ -586,9 +583,6 @@ describe("paid catalog commerce", () => {
 			}),
 			() => fixture.t.query(api.catalogProductGraphs.getPublishedBySlug, {
 				siteUrl: SITE_A.siteUrl, slug: "integrity-current",
-			}),
-			() => fixture.adminA.query(api.catalogProductGraphs.getRetirementEligibility, {
-				productId: created.productId,
 			}),
 			() => fixture.adminA.query(api.catalogProductGraphs.listDraftPrivateAssetCandidates, {
 				productId: created.productId, expectedDraftRevisionId: created.revisionId,

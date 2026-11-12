@@ -65,10 +65,6 @@ import {
 import { assertOrderProducersOpen } from "./helpers/orderProducerGate";
 import { enqueuePrintFulfillmentJob } from "./helpers/printFulfillmentJobs";
 import {
-	classifyRefundTargetRows,
-	refundTargetClassificationValidator,
-} from "./helpers/refundTargetClassifier";
-import {
 	FEE_CAPTURE_INITIAL_DELAY_MS,
 	isNonnegativeSafeInteger,
 	isStripeCurrency,
@@ -88,12 +84,6 @@ const orderStatusValidator = v.union(
 	v.literal("refunded"),
 	v.literal("canceled"),
 	v.literal("fulfillment_error"),
-);
-
-const shipmentEmailDeliveryStatusValidator = v.union(
-	v.literal("sent"),
-	v.literal("failed"),
-	v.literal("skipped"),
 );
 
 const shipmentEmailDeliveryFailureCodeValidator = v.union(
@@ -403,78 +393,6 @@ async function findLumaPrintsOrderForShipment(
 	return await ctx.db.get(submitted._id);
 }
 
-async function claimShipmentEmailForOrder(
-	ctx: MutationCtx,
-	order: Doc<"orders">,
-	trackingNumber?: string,
-	trackingUrl?: string,
-) {
-	if (order.shipmentEmailNotificationProtocol === SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL) {
-		return {
-			claimed: false,
-			order: {
-				_id: order._id,
-				siteUrl: order.siteUrl,
-				orderNumber: order.orderNumber,
-				customerEmail: order.customerEmail,
-			},
-		};
-	}
-	const patch: Record<string, unknown> = {};
-	if (canClaimShipmentEmail(order.status)) patch.status = "shipped";
-	if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber;
-	if (trackingUrl !== undefined) patch.trackingUrl = trackingUrl;
-
-	const shouldClaim =
-		order.shipmentEmailSentAt === undefined && canClaimShipmentEmail(order.status);
-	if (shouldClaim) {
-		patch.shipmentEmailSentAt = Date.now();
-		patch.shipmentEmailDeliveryStatus = "pending";
-	}
-
-	if (Object.keys(patch).length > 0) await ctx.db.patch(order._id, patch);
-	return {
-		claimed: shouldClaim,
-		order: {
-			_id: order._id,
-			siteUrl: order.siteUrl,
-			orderNumber: order.orderNumber,
-			customerEmail: order.customerEmail,
-		},
-	};
-}
-
-async function recordShipmentEmailForOrder(
-	ctx: MutationCtx,
-	order: Doc<"orders">,
-	status: "sent" | "failed" | "skipped",
-	error?: string,
-) {
-	if (order.shipmentEmailNotificationProtocol === SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL) {
-		return {
-			recorded: false,
-			order: { _id: order._id, siteUrl: order.siteUrl, orderNumber: order.orderNumber },
-		};
-	}
-	const patch: Pick<
-		Doc<"orders">,
-		| "shipmentEmailDeliveryStatus"
-		| "shipmentEmailDeliveryAttemptedAt"
-		| "shipmentEmailDeliveryError"
-	> = {
-		shipmentEmailDeliveryStatus: status,
-		shipmentEmailDeliveryAttemptedAt: Date.now(),
-	};
-	if (status === "failed") patch.shipmentEmailDeliveryError = "legacy_delivery_failed";
-	else patch.shipmentEmailDeliveryError = undefined;
-
-	await ctx.db.patch(order._id, patch);
-	return {
-		recorded: true,
-		order: { _id: order._id, siteUrl: order.siteUrl, orderNumber: order.orderNumber },
-	};
-}
-
 export const UNBOUND_RETENTION_MS = 25 * 60 * 60 * 1000;
 export const PAID_SAFE_DELAY_MS = 35 * 24 * 60 * 60 * 1000;
 const RESERVATION_RETRY_DELAYS_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
@@ -693,12 +611,6 @@ async function consumeReservation(
 	return { snapshot: row.snapshot, tenantId: row.tenantId, printInput: row.printInput, lumaprintsConnection: row.lumaprintsConnection };
 }
 
-/** Private catalog commerce authority; reachable only through the authenticated HTTP route. */
-export const catalogCommerce = internalQuery({
-	args: { siteUrl: v.string(), request: catalogCommerceRequestValidator },
-	handler: async (ctx, { siteUrl, request }) =>
-		await resolveCatalogCommerce(ctx, siteUrl, request),
-});
 export const catalogCommerceHttp = internalQuery({
 	args: { siteUrl: v.string(), request: catalogCommerceRequestValidator },
 	handler: async (ctx, { siteUrl, request }) => {
@@ -807,40 +719,6 @@ export const list = query({
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
 			.take(BULK_SCAN_LIMIT);
-	},
-});
-
-/**
- * Read one bounded tenant source and return only normalized target classes.
- * This query grants no provider, recovery, or mutation authority.
- */
-export const classifyRefundTarget = query({
-	args: {
-		siteUrl: v.string(),
-		target: v.object({
-			orderNumber: v.string(),
-			stripeSessionId: v.string(),
-			stripePaymentIntentId: v.string(),
-			stripeRefundId: v.string(),
-		}),
-	},
-	returns: refundTargetClassificationValidator,
-	handler: async (ctx, { siteUrl, target }) => {
-		await requireSiteAdmin(ctx, siteUrl, "orders");
-		if (
-			target.orderNumber.length === 0
-			|| target.orderNumber.length > 160
-			|| !isStripeCheckoutSessionId(target.stripeSessionId)
-			|| !STRIPE_PAYMENT_INTENT_ID.test(target.stripePaymentIntentId)
-			|| !STRIPE_REFUND_ID.test(target.stripeRefundId)
-		) throw new Error("Invalid refund target selectors");
-
-		const rowsWithOverflowSentinel = await ctx.db
-			.query("orders")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(BULK_SCAN_LIMIT + 1);
-		return classifyRefundTargetRows(rowsWithOverflowSentinel, BULK_SCAN_LIMIT, target, null);
 	},
 });
 
@@ -1599,216 +1477,6 @@ export const resolveCheckoutAdmissionRouting = query({
 	},
 });
 
-/** Legacy V1 claim retained for a safe Convex-first rollout. */
-export const claimPrintFulfillment = mutation({
-	args: { orderId: v.id("orders"), webhookSecret: v.string() },
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error("Order not found");
-		if (order.clientPrintRefundOperationId) return { kind: "busy" as const };
-		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
-		if (order.lumaprintsOrderNumber)
-			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
-		if (hasUncertainPrintSubmission(order)) {
-			return order.printFulfillmentResolution === "reconciliation_blocked"
-				? { kind: "busy" as const }
-				: { kind: "reconcile" as const, externalId: order.stripeSessionId };
-		}
-		if (
-			order.status === "refunded"
-			&& order.stripeRefundId
-			&& order.fulfillmentRecoveryStatus === undefined
-		) return { kind: "busy" as const };
-		if (order.status === "refunded" || order.stripeRefundId)
-			return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
-		if (order.fulfillmentRecoveryStatus) return { kind: "busy" as const };
-		// A versioned stamp survives preparation-lease release. Do not let a
-		// legacy host subsequently cross the POST fence under newer semantics.
-		if (order.printFulfillmentCoordinatorVersion !== undefined) return { kind: "busy" as const };
-		await ctx.db.patch(args.orderId, {
-			printFulfillmentClaim: true,
-			printFulfillmentResolution: "submission_uncertain",
-		});
-		return { kind: "claimed" as const, externalId: order.stripeSessionId };
-	},
-});
-
-/** Tokenized preparation lease used by the V2 fulfillment coordinator. */
-export const claimPrintFulfillmentV2 = mutation({
-	args: {
-		orderId: v.id("orders"),
-		claimToken: v.string(),
-		webhookSecret: v.string(),
-	},
-	returns: v.union(
-		v.object({ kind: v.literal("fulfilled"), orderNumber: v.string() }),
-		v.object({ kind: v.literal("reconcile"), externalId: v.string() }),
-		v.object({ kind: v.literal("manual_refunded"), stripeRefundId: v.string() }),
-		v.object({ kind: v.literal("automated_refunded"), stripeRefundId: v.string() }),
-		v.object({ kind: v.literal("busy") }),
-		v.object({ kind: v.literal("preparing") }),
-		v.object({
-			kind: v.literal("claimed"),
-			externalId: v.string(),
-			leaseExpiresAt: v.number(),
-		}),
-	),
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
-		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error("Order not found");
-		if (order.clientPrintRefundOperationId) return { kind: "busy" as const };
-		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
-		if (order.lumaprintsOrderNumber)
-			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
-		if (hasUncertainPrintSubmission(order)) {
-			if (order.printFulfillmentResolution === "reconciliation_blocked") {
-				return { kind: "busy" as const };
-			}
-			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
-		}
-		if (
-			order.status === "refunded"
-			&& order.stripeRefundId
-			&& order.fulfillmentRecoveryStatus === undefined
-		) {
-			return { kind: "manual_refunded" as const, stripeRefundId: order.stripeRefundId };
-		}
-		if (order.stripeRefundId) {
-			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
-		}
-		if (order.fulfillmentRecoveryStatus || order.status !== "new") {
-			return { kind: "busy" as const };
-		}
-		// Preserve the V2 return union while refusing ownership of a row that a
-		// newer coordinator already marked durably.
-		if (order.printFulfillmentCoordinatorVersion !== undefined) {
-			return { kind: "busy" as const };
-		}
-		const now = Date.now();
-		if (order.printFulfillmentClaim) {
-			if (order.printFulfillmentPhase !== "preparing") {
-				return { kind: "reconcile" as const, externalId: order.stripeSessionId };
-			}
-			if (
-				order.printFulfillmentLeaseExpiresAt !== undefined
-				&& order.printFulfillmentLeaseExpiresAt > now
-			) return { kind: "preparing" as const };
-		}
-		const leaseExpiresAt = now + PRINT_PREPARATION_LEASE_MS;
-		await ctx.db.patch(args.orderId, {
-			printFulfillmentClaim: true,
-			printFulfillmentClaimToken: args.claimToken,
-			printFulfillmentPhase: "preparing",
-			printFulfillmentClaimedAt: now,
-			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
-			printFulfillmentResolution: undefined,
-			printFulfillmentReconciliationClass: undefined,
-			printFulfillmentReconciliationBlockedAt: undefined,
-		});
-		return {
-			kind: "claimed" as const,
-			externalId: order.stripeSessionId,
-			leaseExpiresAt,
-		};
-	},
-});
-
-/**
- * Versioned coordinator claim. Its return value may evolve independently while
- * V2 remains byte-compatible for already-deployed hosts.
- */
-export const claimPrintFulfillmentV3 = mutation({
-	args: {
-		orderId: v.id("orders"),
-		claimToken: v.string(),
-		webhookSecret: v.string(),
-	},
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
-		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error("Order not found");
-		if (order.clientPrintRefundOperationId) return { kind: "busy" as const };
-		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
-		if (order.lumaprintsOrderNumber) {
-			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
-		}
-		if (hasUncertainPrintSubmission(order)) {
-			if (order.printFulfillmentResolution === "reconciliation_blocked") {
-				return {
-					kind: "reconciliation_blocked" as const,
-					reconciliationClass:
-						order.printFulfillmentReconciliationClass ?? "client_error",
-					...(order.printFulfillmentReconciliationEscalationReason === undefined
-						? {}
-						: {
-								escalationReason:
-									order.printFulfillmentReconciliationEscalationReason,
-							}),
-				};
-			}
-			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
-		}
-		if (
-			order.status === "refunded"
-			&& order.stripeRefundId
-			&& order.fulfillmentRecoveryStatus === undefined
-		) {
-			return { kind: "manual_refunded" as const, stripeRefundId: order.stripeRefundId };
-		}
-		if (order.stripeRefundId) {
-			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
-		}
-		if (order.fulfillmentRecoveryStatus || order.status !== "new") {
-			return { kind: "busy" as const };
-		}
-		// A legacy V3 caller must never take over a newer admitted obligation after
-		// its transient preparation lease is released or expires.
-		if (
-			order.printFulfillmentCoordinatorVersion === 4
-			|| order.printFulfillmentCoordinatorVersion === 5
-		) {
-			return { kind: "busy" as const };
-		}
-		const now = Date.now();
-		if (order.printFulfillmentClaim) {
-			if (order.printFulfillmentPhase !== "preparing") {
-				return { kind: "reconcile" as const, externalId: order.stripeSessionId };
-			}
-			if (
-				order.printFulfillmentLeaseExpiresAt !== undefined
-				&& order.printFulfillmentLeaseExpiresAt > now
-			) return { kind: "preparing" as const };
-		}
-		const leaseExpiresAt = now + PRINT_PREPARATION_LEASE_MS;
-		await ctx.db.patch(args.orderId, {
-			printFulfillmentClaim: true,
-			printFulfillmentClaimToken: args.claimToken,
-			printFulfillmentPhase: "preparing",
-			printFulfillmentClaimedAt: now,
-			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
-			printFulfillmentCoordinatorVersion: 3,
-			printFulfillmentResolution: undefined,
-			printFulfillmentReconciliationClass: undefined,
-			printFulfillmentReconciliationBlockedAt: undefined,
-			printFulfillmentReconciliationPendingFirstAt: undefined,
-			printFulfillmentReconciliationPendingAttempts: undefined,
-			printFulfillmentReconciliationLastAttemptAt: undefined,
-			printFulfillmentReconciliationLastAttemptClass: undefined,
-			printFulfillmentReconciliationPendingClassCounts: undefined,
-			printFulfillmentReconciliationEscalationReason: undefined,
-		});
-		return {
-			kind: "claimed" as const,
-			externalId: order.stripeSessionId,
-			leaseExpiresAt,
-		};
-	},
-});
-
 type PrintFulfillmentClaimArgs = {
 	orderId: Id<"orders">;
 	claimToken: string;
@@ -1830,7 +1498,6 @@ async function ownsPrintJobPreparation(ctx: MutationCtx, order: Doc<"orders">, l
 async function claimPrintFulfillmentWithAdmission(
 	ctx: MutationCtx,
 	args: PrintFulfillmentClaimArgs,
-	coordinatorVersion: 4 | 5,
 ) {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
@@ -1847,9 +1514,6 @@ async function claimPrintFulfillmentWithAdmission(
 		}
 		if (order.lumaprintsOrderNumber) {
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
-		}
-		if (coordinatorVersion === 4 && order.printFulfillmentCoordinatorVersion === 5) {
-			return { kind: "busy" as const };
 		}
 		// Old runners must not send or reconcile a new reference as a Stripe ID.
 		if ((order.lumaprintsExternalId !== undefined || args.providerExternalId !== undefined)
@@ -1869,14 +1533,9 @@ async function claimPrintFulfillmentWithAdmission(
 			}
 			const retryAt = printReconciliationRetryAt(order);
 			if (retryAt !== undefined && retryAt > Date.now()) {
-				return coordinatorVersion === 5
-					? {
-							kind: "waiting" as const,
-							retryAt,
-						}
-					: { kind: "preparing" as const };
+				return { kind: "waiting" as const, retryAt };
 			}
-			if (coordinatorVersion === 5 && order.lumaprintsSubmissionOrderNumber !== undefined) {
+			if (order.lumaprintsSubmissionOrderNumber !== undefined) {
 				return {
 					kind: "reconcile" as const,
 					externalId: order.stripeSessionId,
@@ -1899,12 +1558,12 @@ async function claimPrintFulfillmentWithAdmission(
 			|| order.status !== "new"
 			|| order.fulfillmentType !== "lumaprints"
 		) return { kind: "busy" as const };
-		if (coordinatorVersion === 4) return { kind: "submission_closed" as const };
 
 		const now = Date.now();
+		// Rows admitted by the retired V4 coordinator stay resumable under V5.
 		const alreadyAdmitted = (
-			order.printFulfillmentCoordinatorVersion === coordinatorVersion
-			|| coordinatorVersion === 5 && order.printFulfillmentCoordinatorVersion === 4
+			order.printFulfillmentCoordinatorVersion === 5
+			|| order.printFulfillmentCoordinatorVersion === 4
 		)
 			&& order.printProviderAdmissionStatus === "admitted"
 			&& Number.isSafeInteger(order.printProviderAdmissionGeneration)
@@ -1951,7 +1610,7 @@ async function claimPrintFulfillmentWithAdmission(
 			printFulfillmentPhase: "preparing",
 			printFulfillmentClaimedAt: now,
 			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
-			printFulfillmentCoordinatorVersion: coordinatorVersion,
+			printFulfillmentCoordinatorVersion: 5,
 			printProviderAdmissionStatus: "admitted",
 			printProviderAdmissionGeneration: providerGeneration,
 			printProviderAdmissionAt: order.printProviderAdmissionAt ?? now,
@@ -1988,16 +1647,10 @@ const printFulfillmentClaimArgs = {
 	webhookSecret: v.string(),
 };
 
-/** R4 reconciliation-only coordinator retained for rolling deploys. */
-export const claimPrintFulfillmentV4 = mutation({
-	args: printFulfillmentClaimArgs,
-	handler: (ctx, args) => claimPrintFulfillmentWithAdmission(ctx, args, 4),
-});
-
 /** Queue-aware coordinator: a POST receipt remains provisional until provider confirmation. */
 export const claimPrintFulfillmentV5 = mutation({
 	args: printFulfillmentClaimArgs,
-	handler: (ctx, args) => claimPrintFulfillmentWithAdmission(ctx, args, 5),
+	handler: (ctx, args) => claimPrintFulfillmentWithAdmission(ctx, args),
 });
 
 export const expirePrintFulfillmentPreparationV4 = internalMutation({
@@ -2192,47 +1845,6 @@ export const recordPrintFulfillmentSubmissionReceipt = mutation({
 			printFulfillmentReconciliationEscalationReason: undefined,
 		});
 		return { kind: "recorded" as const };
-	},
-});
-
-/** Store an exact legacy fenced POST result, even when a refund committed first. */
-export const completePrintFulfillmentSubmission = mutation({
-	args: {
-		orderId: v.id("orders"),
-		claimToken: v.string(),
-		externalId: v.string(),
-		lumaprintsOrderNumber: v.string(),
-		tenantId: v.optional(v.string()),
-		webhookSecret: v.string(),
-	},
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
-		if (
-			!isStripeCheckoutSessionId(args.externalId)
-			|| !LUMAPRINTS_ORDER_NUMBER.test(args.lumaprintsOrderNumber)
-		) throw new Error("Invalid print fulfillment result");
-		const order = await ctx.db.get(args.orderId);
-		if (!order || order.stripeSessionId !== args.externalId) {
-			throw new Error("Print fulfillment identity does not match order");
-		}
-		await assertOrderTenant(ctx, order, args.tenantId);
-		if (order.lumaprintsOrderNumber !== undefined) {
-			if (
-				order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber
-				|| order.printFulfillmentResolution !== "resolved"
-			) throw new Error("Print fulfillment result conflicts");
-			return printFulfillmentCompletionOutcome(order);
-		}
-		if (order.printFulfillmentCoordinatorVersion !== undefined) {
-			throw new Error("Versioned print fulfillment requires provider confirmation");
-		}
-		if (
-			!hasUncertainPrintSubmission(order)
-			|| order.printFulfillmentPhase !== "submitting"
-			|| order.printFulfillmentClaimToken !== args.claimToken
-		) throw new Error("Print fulfillment submission claim is unavailable");
-		return await attachPrintFulfillmentResult(ctx, order, args.lumaprintsOrderNumber);
 	},
 });
 
@@ -2669,105 +2281,6 @@ export const completePrintFulfillmentReconciliationAlert = mutation({
 	},
 });
 
-/** Lease the idempotent Stripe request for one automated fulfillment refund. */
-export const claimAutomatedFulfillmentRefund = mutation({
-	args: {
-		orderId: v.id("orders"),
-		claimToken: v.string(),
-		fulfillmentError: v.string(),
-		webhookSecret: v.string(),
-	},
-	returns: v.union(
-		v.object({ kind: v.literal("claimed"), leaseExpiresAt: v.number() }),
-		v.object({ kind: v.literal("busy"), leaseExpiresAt: v.number() }),
-		v.object({ kind: v.literal("refunded"), stripeRefundId: v.string() }),
-		v.object({ kind: v.literal("unavailable"), guidedRefund: v.optional(v.literal(true)) }),
-	),
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid refund claim token");
-		if (args.fulfillmentError.length < 1 || args.fulfillmentError.length > 1000) {
-			throw new Error("Invalid durable fulfillment error");
-		}
-		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error("Order not found");
-		if (order.clientPrintRefundOperationId || order.clientPrintRefundStartedAt !== undefined) return { kind: "unavailable" as const, guidedRefund: true as const };
-		if (
-			order.status === "fulfillment_error"
-			&& order.fulfillmentRecoveryStatus === "refunded"
-			&& order.stripeRefundId !== undefined
-		) return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
-		const isFreshRecovery = order.status === "new"
-			&& order.fulfillmentRecoveryStatus === undefined
-			&& order.fulfillmentError === undefined
-			&& order.stripeRefundId === undefined
-			&& order.lumaprintsOrderNumber === undefined
-			&& order.printFulfillmentClaim !== true
-			&& order.printFulfillmentPhase === undefined
-			&& order.printFulfillmentResolution === undefined;
-		const isPendingRecovery = order.status === "fulfillment_error"
-			&& (
-				order.fulfillmentRecoveryStatus === undefined
-				|| order.fulfillmentRecoveryStatus === "refund_pending"
-			)
-			&& order.stripeRefundId === undefined
-			&& order.automatedRefundId === undefined
-			&& order.lumaprintsOrderNumber === undefined
-			&& order.printFulfillmentClaim !== true
-			&& order.printFulfillmentPhase === undefined
-			&& order.printFulfillmentResolution === undefined
-			&& (
-				order.fulfillmentError === undefined
-				|| order.fulfillmentError === args.fulfillmentError
-			);
-		if (!isFreshRecovery && !isPendingRecovery) return { kind: "unavailable" as const };
-		const now = Date.now();
-		if (
-			order.automatedRefundClaimToken !== undefined
-			&& order.automatedRefundLeaseExpiresAt !== undefined
-			&& order.automatedRefundLeaseExpiresAt > now
-		) {
-			return {
-				kind: "busy" as const,
-				leaseExpiresAt: order.automatedRefundLeaseExpiresAt,
-			};
-		}
-		if (
-			isPendingRecovery
-			&& order.fulfillmentRecoveryStatus === "refund_pending"
-			&& order.automatedRefundPreRequestProtocol !== "print_rejection_v1"
-		) {
-			await ctx.db.patch(order._id, {
-				fulfillmentRecoveryStatus: "refund_attention",
-				automatedRefundAttentionAt: now,
-				automatedRefundAttentionReason: "request_outcome_unknown",
-				automatedRefundFirstAttemptAt:
-					order.automatedRefundFirstAttemptAt ?? order.automatedRefundClaimedAt ?? now,
-				automatedRefundClaimedAt: undefined,
-				automatedRefundClaimToken: undefined,
-				automatedRefundLeaseExpiresAt: undefined,
-				fulfillmentFailureNotificationProtocol: FULFILLMENT_NOTIFICATION_PROTOCOL,
-				fulfillmentFailureNotificationRetryProtocol: "bounded_23h_v1",
-			});
-			return { kind: "unavailable" as const };
-		}
-		const leaseExpiresAt = now + AUTOMATED_REFUND_LEASE_MS;
-		await ctx.db.patch(order._id, {
-			status: "fulfillment_error",
-			fulfillmentError: args.fulfillmentError,
-			fulfillmentRecoveryStatus: "refund_pending",
-			automatedRefundClaimedAt: now,
-			automatedRefundClaimToken: args.claimToken,
-			automatedRefundLeaseExpiresAt: leaseExpiresAt,
-			automatedRefundAttempts: (order.automatedRefundAttempts ?? 0) + 1,
-			automatedRefundFirstAttemptAt: order.automatedRefundFirstAttemptAt ?? now,
-			automatedRefundLastAttemptAt: now,
-			automatedRefundPreRequestProtocol: undefined,
-		});
-		return { kind: "claimed" as const, leaseExpiresAt };
-	},
-});
-
 /** Lease-aware refund coordinator that resumes a stored provider refund by ID. */
 export const claimAutomatedFulfillmentRefundV2 = mutation({
 	args: {
@@ -3054,26 +2567,6 @@ export const releaseAutomatedFulfillmentRefund = mutation({
 			automatedRefundLeaseExpiresAt: undefined,
 		});
 		return true;
-	},
-});
-
-/** Store a Stripe refund result only for the current automated-refund owner. */
-export const completeAutomatedFulfillmentRefund = mutation({
-	args: {
-		orderId: v.id("orders"),
-		claimToken: v.string(),
-		stripeRefundId: v.string(),
-		webhookSecret: v.string(),
-	},
-	returns: v.union(
-		v.object({ kind: v.literal("completed") }),
-		v.object({ kind: v.literal("replayed") }),
-	),
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid refund claim token");
-		if (!STRIPE_REFUND_ID.test(args.stripeRefundId)) throw new Error("Invalid Stripe refund ID");
-		throw new Error("Automated refund status requires the versioned completion protocol");
 	},
 });
 
@@ -3382,22 +2875,6 @@ export const reconcileAutomatedFulfillmentRefund = mutation({
 			) return { kind: "rejected" as const, reason: "state_conflict" as const };
 			throw cause;
 		}
-	},
-});
-
-/** Claim one best-effort failure notification after an automated refund is durable. */
-export const claimFulfillmentFailureNotification = mutation({
-	args: {
-		orderId: v.id("orders"),
-		audience: v.union(v.literal("admin"), v.literal("customer")),
-		webhookSecret: v.string(),
-	},
-	returns: v.boolean(),
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		// Kept byte-compatible for rollout, but deliberately inert. Rows written by
-		// this legacy at-most-once protocol must never authorize a new send.
-		return false;
 	},
 });
 
@@ -4041,66 +3518,6 @@ export const claimPaymentFailureEmail = mutation({
 });
 
 /**
- * @deprecated Compatibility export for authenticated site administrators only.
- * Central hub shipment intake uses the legacy-scope V2 lease below.
- */
-export const claimShipmentEmailNotification = mutation({
-	args: {
-		siteUrl: v.string(),
-		lumaprintsOrderNumber: v.string(),
-		webhookSecret: v.optional(v.string()),
-		trackingNumber: v.optional(v.string()),
-		trackingUrl: v.optional(v.string()),
-	},
-	handler: async (
-		ctx,
-		{ siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret, trackingNumber, trackingUrl },
-	) => {
-		await requireSiteAdmin(ctx, siteUrl, "orders");
-		const matchingOrders = await ctx.db
-			.query("orders")
-			.withIndex("by_lumaprintsOrderNumber", (q) =>
-				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
-			)
-			.take(2);
-		if (matchingOrders.length > 1) throw new Error("Duplicate LumaPrints order number");
-		const order = matchingOrders[0];
-		return order
-			? await claimShipmentEmailForOrder(ctx, order, trackingNumber, trackingUrl)
-			: null;
-	},
-});
-
-/**
- * @deprecated Compatibility export for authenticated site administrators only.
- * Arbitrary legacy error text is accepted for call compatibility but never stored.
- */
-export const recordShipmentEmailDelivery = mutation({
-	args: {
-		siteUrl: v.string(),
-		lumaprintsOrderNumber: v.string(),
-		webhookSecret: v.optional(v.string()),
-		status: shipmentEmailDeliveryStatusValidator,
-		error: v.optional(v.string()),
-	},
-	handler: async (
-		ctx,
-		{ siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret, status },
-	) => {
-		await requireSiteAdmin(ctx, siteUrl, "orders");
-		const matchingOrders = await ctx.db
-			.query("orders")
-			.withIndex("by_lumaprintsOrderNumber", (q) =>
-				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
-			)
-			.take(2);
-		if (matchingOrders.length > 1) throw new Error("Duplicate LumaPrints order number");
-		const order = matchingOrders[0];
-		return order ? await recordShipmentEmailForOrder(ctx, order, status) : null;
-	},
-});
-
-/**
  * Lease the hub-owned shipment email side effect inside the authenticated supplier
  * scope. An absent context means legacy central work only. A V2 row may be
  * reclaimed after its lease expires; historical
@@ -4439,37 +3856,6 @@ export const lookupForCustomer = query({
 	},
 });
 
-/** @deprecated Authenticated-admin-only site-scoped shipment lookup compatibility export. */
-export const getByLumaprintsOrderNumber = query({
-	args: {
-		siteUrl: v.string(),
-		lumaprintsOrderNumber: v.string(),
-		webhookSecret: v.optional(v.string()),
-	},
-	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret }) => {
-		await requireSiteAdmin(ctx, siteUrl, "orders");
-		if (!LUMAPRINTS_ORDER_NUMBER.test(lumaprintsOrderNumber)) return null;
-		const matchingOrders = await ctx.db
-			.query("orders")
-			.withIndex("by_lumaprintsOrderNumber", (q) =>
-				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
-			)
-			.take(2);
-		if (matchingOrders.length > 1) throw new Error("Duplicate LumaPrints order number");
-		const order = matchingOrders[0];
-		return order
-			? {
-					_id: order._id,
-					orderNumber: order.orderNumber,
-					status: order.status,
-					customerEmail: order.customerEmail,
-					trackingNumber: order.trackingNumber,
-					trackingUrl: order.trackingUrl,
-				}
-			: null;
-	},
-});
-
 function projectRecentOrder(order: Doc<"orders">) { return {
 			_id: order._id,
 			orderNumber: order.orderNumber,
@@ -4677,14 +4063,6 @@ async function readDashboardStats(ctx: QueryCtx, siteUrl: string) {
 export const getStats = query({ args: { siteUrl: v.string() }, handler: (ctx, { siteUrl }) => readDashboardStats(ctx, siteUrl) });
 // The day is a cache key supplied by current clients, never authority for the reporting period.
 export const getStatsForDay = query({ args: { siteUrl: v.string(), day: v.string() }, handler: (ctx, { siteUrl }) => readDashboardStats(ctx, siteUrl) });
-
-export const getNextOrderNumber = query({
-	args: { siteUrl: v.string() },
-	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl, "orders");
-		return generateNextOrderNumber(ctx, siteUrl);
-	},
-});
 
 /** Customer refund observations; financial execution is a separate workflow. */
 export const beginClientRefundObservation = mutation({

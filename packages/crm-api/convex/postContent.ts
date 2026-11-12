@@ -4,7 +4,6 @@ import {
 	getPostEditorState,
 	getPublishedPostBySlug,
 	listPostEditorDocuments,
-	listPublishedPosts,
 	listPublishedPostPage,
 	resolvePublishedPostSlug,
 } from "./helpers/postContentQueries";
@@ -102,13 +101,6 @@ export const getPublishedBySlug = query({
 export const resolvePublishedSlug = query({
 	args: { siteUrl: v.string(), slug: v.string() },
 	handler: async (ctx, args) => await resolvePublishedPostSlug(ctx, args),
-});
-
-/** Newest published Post summaries, explicitly bounded for public routes. */
-export const listPublished = query({
-	args: { siteUrl: v.string(), limit: v.number() },
-	handler: async (ctx, { siteUrl, limit }) =>
-		await listPublishedPosts(ctx, siteUrl, limit),
 });
 
 /** Numbered public Blog pages; only the requested page joins supporting content. */

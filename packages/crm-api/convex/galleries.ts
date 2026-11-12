@@ -11,10 +11,8 @@ import {
 } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireDocumentSiteAdminWithClient, requireSiteAdmin } from "./authHelpers";
 import {
-	COMPACT_LIST_LIMIT,
 	DEFAULT_LIST_LIMIT,
 	GALLERY_IMAGE_LIMIT,
-	LARGE_SCAN_LIMIT,
 } from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
 import { requireGalleryAccessGrant } from "./galleryAccess";
@@ -22,7 +20,7 @@ import { logActivity } from "./activityLog";
 
 // Audit H14: cap per-batch DB deletes so the mutation transaction never
 // runs into Convex's operation-count ceiling. Galleries with >2000 photos
-// + downloads fan out across multiple scheduled batches instead of trying
+// and related rows fan out across multiple scheduled batches instead of trying
 // to delete everything in one shot.
 const REMOVE_BATCH_SIZE = 500;
 
@@ -191,16 +189,13 @@ export const remove = mutation({
 
 /**
  * Delete one batch of gallery rows. Reschedules itself until images,
- * downloads, and access grants are empty for this gallery,
+ * upload checkpoints, access grants and proofing rows are empty for this gallery,
  * then deletes the gallery document and stops.
  */
 export const _removeBatch = internalMutation({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
-		// Look up the gallery once so we have the siteUrl for the
-		// tenant-scoped galleryDownloads index (audit M23).
 		const gallery = await ctx.db.get(id);
-		const siteUrl = gallery?.siteUrl;
 
 		const images = await ctx.db
 			.query("galleryImages")
@@ -214,24 +209,11 @@ export const _removeBatch = internalMutation({
   for(const checkpoint of checkpoints) await ctx.db.delete(checkpoint._id);
 
 		let remainingBudget = REMOVE_BATCH_SIZE - images.length - checkpoints.length;
-		if (remainingBudget > 0 && siteUrl) {
-			const downloads = await ctx.db
-				.query("galleryDownloads")
-				.withIndex("by_siteUrl_and_galleryId", (q) =>
-					q.eq("siteUrl", siteUrl).eq("galleryId", id),
-				)
+		if (remainingBudget > 0 && gallery) {
+			const grants = await ctx.db
+				.query("galleryAccessGrants")
+				.withIndex("by_gallery", (q) => q.eq("galleryId", id))
 				.take(remainingBudget);
-			for (const dl of downloads) {
-				await ctx.db.delete(dl._id);
-			}
-			remainingBudget -= downloads.length;
-
-			const grants = remainingBudget > 0
-				? await ctx.db
-					.query("galleryAccessGrants")
-					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
-					.take(remainingBudget)
-				: [];
 			for (const grant of grants) {
 				await ctx.db.delete(grant._id);
 			}
@@ -249,19 +231,13 @@ export const _removeBatch = internalMutation({
 					.query("galleryImages")
 					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
 					.first();
-				const stillHasDownloads = await ctx.db
-					.query("galleryDownloads")
-					.withIndex("by_siteUrl_and_galleryId", (q) =>
-						q.eq("siteUrl", siteUrl).eq("galleryId", id),
-					)
-					.first();
 				const stillHasGrants = await ctx.db
 					.query("galleryAccessGrants")
 					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
 					.first();
 				const stillHasProofImages = await ctx.db.query("galleryProofImages").withIndex("by_galleryId", (q) => q.eq("galleryId", id)).first();
 				const stillHasProofs = await ctx.db.query("galleryProofSubmissions").withIndex("by_galleryId", (q) => q.eq("galleryId", id)).first();
-				if (!stillHasImages && !stillHasDownloads && !stillHasGrants && !stillHasProofImages && !stillHasProofs) {
+				if (!stillHasImages && !stillHasGrants && !stillHasProofImages && !stillHasProofs) {
 					const verifier = await ctx.db
 						.query("galleryPasswordVerifiers")
 						.withIndex("by_gallery", (q) => q.eq("galleryId", id))
@@ -271,9 +247,9 @@ export const _removeBatch = internalMutation({
 					return;
 				}
 			}
-		} else if (remainingBudget > 0 && !siteUrl) {
+		} else if (remainingBudget > 0 && !gallery) {
 			// Gallery document already deleted on a prior batch — nothing
-			// more to sweep (we only scope downloads by (siteUrl, galleryId)).
+			// more to sweep.
 			return;
 		}
 
@@ -287,23 +263,6 @@ export const get = query({
 	handler: async (ctx, { id }) => {
 		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id, "galleryDelivery");
 		return await withPasswordProtection(ctx, gallery);
-	},
-});
-
-export const getBySlug = query({
-	args: {
-		siteUrl: v.string(),
-		slug: v.string(),
-	},
-	handler: async (ctx, { siteUrl, slug }) => {
-		await requireSiteAdmin(ctx, siteUrl, "galleryDelivery");
-		const gallery = await ctx.db
-			.query("galleries")
-			.withIndex("by_siteUrl_and_slug", (q) =>
-				q.eq("siteUrl", siteUrl).eq("slug", slug),
-			)
-			.unique();
-		return gallery ? await withPasswordProtection(ctx, gallery) : null;
 	},
 });
 
@@ -359,19 +318,6 @@ export const listBySitePaginated = query({
 			numItems: Math.min(paginationOpts.numItems, 50), maximumRowsRead: 50,
 		});
 		return { ...result, page: await galleryListDetails(ctx, result.page) };
-	},
-});
-
-export const listByClient = query({
-	args: { clientId: v.id("photographyClients") },
-	handler: async (ctx, { clientId }) => {
-		await requireDocumentSiteAdmin(ctx, "photographyClients", clientId, "galleryDelivery");
-		const galleries = await ctx.db
-			.query("galleries")
-			.withIndex("by_client", (q) => q.eq("clientId", clientId))
-			.order("desc")
-			.take(COMPACT_LIST_LIMIT);
-		return await Promise.all(galleries.map((gallery) => withPasswordProtection(ctx, gallery)));
 	},
 });
 
@@ -715,77 +661,6 @@ export const listImageStorageKeys = query({
 				.map((image) => image.r2Key),
 			isDone: page.isDone,
 			continueCursor: page.continueCursor,
-		};
-	},
-});
-
-// Download tracking
-
-export const logDownload = mutation({
-	args: {
-		siteUrl: v.string(),
-		galleryId: v.id("galleries"),
-		token: v.string(),
-		accessGrant: v.optional(v.string()),
-		imageId: v.optional(v.id("galleryImages")),
-		ipHash: v.string(),
-		type: v.union(
-			v.literal("single"),
-			v.literal("zip"),
-			v.literal("favorites"),
-		),
-	},
-	handler: async (ctx, { token, accessGrant, ...download }) => {
-		const gallery = await requireGalleryPortalToken(ctx, token, download.galleryId, accessGrant);
-		if (gallery.siteUrl !== download.siteUrl) throw new Error("Gallery not found");
-		if (download.imageId) {
-			const image = await ctx.db.get(download.imageId);
-			if (
-				!image ||
-				image.galleryId !== download.galleryId ||
-				image.siteUrl !== download.siteUrl
-			) {
-				throw new Error("Image not found");
-			}
-		}
-
-		await ctx.db.insert("galleryDownloads", {
-			...download,
-			downloadedAt: Date.now(),
-		});
-
-		if (download.imageId) {
-			const image = await ctx.db.get(download.imageId);
-			if (image) {
-				await ctx.db.patch(download.imageId, {
-					downloadCount: image.downloadCount + 1,
-				});
-			}
-		}
-	},
-});
-
-export const getDownloadStats = query({
-	args: { galleryId: v.id("galleries") },
-	handler: async (ctx, { galleryId }) => {
-		await requireDocumentSiteAdmin(ctx, "galleries", galleryId, "galleryDelivery");
-		// Audit M23: scope via `by_siteUrl_and_galleryId` (single source of
-		// truth for tenant-filtered reads) rather than the dropped `by_gallery`.
-		const gallery = await ctx.db.get(galleryId);
-		if (!gallery) return { total: 0, single: 0, zip: 0, favorites: 0 };
-
-		const downloads = await ctx.db
-			.query("galleryDownloads")
-			.withIndex("by_siteUrl_and_galleryId", (q) =>
-				q.eq("siteUrl", gallery.siteUrl).eq("galleryId", galleryId),
-			)
-			.take(LARGE_SCAN_LIMIT);
-
-		return {
-			total: downloads.length,
-			single: downloads.filter((d) => d.type === "single").length,
-			zip: downloads.filter((d) => d.type === "zip").length,
-			favorites: downloads.filter((d) => d.type === "favorites").length,
 		};
 	},
 });

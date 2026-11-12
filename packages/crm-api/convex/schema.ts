@@ -1541,10 +1541,7 @@ export default defineSchema({
 		])
 		.index("by_connectionRef_and_lumaprintsSubmissionOrderNumber", [
 			"lumaprintsConnection.connectionRef", "lumaprintsSubmissionOrderNumber",
-		])
-		// Deprecated authenticated-admin compatibility lookup. The hub webhook
-		// uses connection scope and never delegates its bearer secret.
-		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),
+		]),
 
 	// Minimal replay protection retained after an owner-approved order reset.
 	retiredOrderSessions: defineTable({
@@ -2119,25 +2116,6 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_galleryId", ["galleryId"])
 		.index("by_submissionId_and_order", ["submissionId", "order"]),
-
-	// Gallery download tracking
-	galleryDownloads: defineTable({
-		siteUrl: v.string(),
-		galleryId: v.id("galleries"),
-		imageId: v.optional(v.id("galleryImages")),
-		downloadedAt: v.number(),
-		ipHash: v.string(),
-		type: v.union(
-			v.literal("single"),
-			v.literal("zip"),
-			v.literal("favorites"),
-		),
-	})
-		// Audit M23: dropped redundant `by_gallery` — any galleryId-only query
-		// also needs tenant scoping via siteUrl, so `by_siteUrl_and_galleryId`
-		// covers the same lookups without the duplicate write cost.
-		.index("by_siteUrl", ["siteUrl"])
-		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"]),
 
 	gmailMailboxes: defineTable({
 		siteUrl: v.string(), address: v.string(), encryptedRefreshToken: v.optional(v.string()), generation: v.number(),

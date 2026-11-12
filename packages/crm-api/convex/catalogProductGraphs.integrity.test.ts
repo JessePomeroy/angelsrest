@@ -218,7 +218,7 @@ describe("catalog product graph V2 integrity and asset boundaries", () => {
 			siteUrl: SITE_A.siteUrl,
 			id: fixture.webA,
 		})).rejects.toThrow(/retained by catalog/);
-		expect((await fixture.adminA.query(api.mediaAssets.get, { id: fixture.webA })).status)
+		expect((await fixture.t.run(async (ctx) => await ctx.db.get(fixture.webA)))?.status)
 			.toBe("ready");
 	});
 

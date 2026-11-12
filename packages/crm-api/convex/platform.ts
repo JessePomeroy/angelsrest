@@ -473,18 +473,6 @@ export const updateClient = mutation({
 	},
 });
 
-/** Retired raw assignment endpoint. Old hosts must fail closed during adoption. */
-export const updateStripeConnectedAccount = mutation({
-	args: {
-		siteUrl: v.string(),
-		stripeConnectedAccountId: v.optional(v.string()),
-	},
-	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-		throw new Error("Stripe accounts must be bound through verified onboarding");
-	},
-});
-
 /** Creator-only target resolution before the host reads supplier credentials or calls the provider. */
 export const getLumaPrintsSetupTarget = query({
 	args: { siteUrl: v.string() },
@@ -995,17 +983,6 @@ export const listTrustedOrigins = internalQuery({
 			}
 		}
 		return Array.from(origins);
-	},
-});
-
-/** Retired CLI assignment; provider account binding requires verified onboarding. */
-export const setStripeConnectedAccount = internalMutation({
-	args: {
-		siteUrl: v.string(),
-		stripeConnectedAccountId: v.optional(v.string()),
-	},
-	handler: async () => {
-		throw new Error("Stripe accounts must be bound through verified onboarding");
 	},
 });
 

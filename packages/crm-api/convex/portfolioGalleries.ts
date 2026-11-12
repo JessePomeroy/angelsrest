@@ -424,36 +424,6 @@ export const reorder = mutation({
 	},
 });
 
-export const listPublished = query({
-	args: { siteUrl: v.string() },
-	handler: async (ctx, { siteUrl }) => {
-		if (await isPublicSiteOffline(ctx, siteUrl)) return [];
-		const galleries = await ctx.db
-			.query("portfolioGalleries")
-			.withIndex("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", (q) =>
-				q.eq("siteUrl", siteUrl).eq("isPublished", true).eq("isVisible", true),
-			)
-			.take(PORTFOLIO_GALLERY_MAX);
-		return await Promise.all(galleries.map(async (gallery) => {
-			const revision = await getPortfolioRevision(ctx, gallery.publishedRevisionId);
-			if (!revision) throw new Error("Published portfolio revision not found");
-			assertRevisionOwnership(revision, gallery);
-			const title = revision.title?.trim() ?? "";
-			if (!title) throw new Error("Published portfolio title is missing");
-			return {
-				galleryId: gallery._id,
-				revisionId: revision._id,
-				title,
-				description: revision.description?.trim() || null,
-				slug: revision.slug,
-				portfolioOrder: gallery.portfolioOrder,
-				placementCount: revision.placementCount,
-				publishedAt: gallery.publishedAt ?? revision.createdAt,
-			};
-		}));
-	},
-});
-
 async function loadPublishedNavigation(ctx: QueryCtx, siteUrl: string) {
 		if (await isPublicSiteOffline(ctx, siteUrl)) return [];
 		const galleries = await ctx.db.query("portfolioGalleries")
