@@ -129,8 +129,8 @@ function fixtureQuery(name: string, args: Args = {}) {
 					],
 				},
 			]);
-		case "galleries:listBySite":
-			return list(data.galleries);
+		case "galleries:listBySitePaginated":
+			return pageOf(data.galleries);
 		case "galleries:getImages":
 			return [];
 		case "portfolioGalleries:listForEditor":
@@ -141,7 +141,6 @@ function fixtureQuery(name: string, args: Args = {}) {
 			return pageOf(data.mediaAssets);
 		case "mediaAssets:getManyForEditor":
 			return data.mediaAssets;
-		case "catalogProducts:listForEditor":
 		case "catalogProductGraphs:listForEditor":
 			return detail
 				? list(
@@ -150,7 +149,6 @@ function fixtureQuery(name: string, args: Args = {}) {
 						),
 					)
 				: [];
-		case "catalogProducts:getEditorState":
 		case "catalogProductGraphs:getEditorState":
 			return publicationFixture(data.product);
 		case "postContent:listForEditor":

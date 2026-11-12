@@ -67,9 +67,7 @@ describe("authenticated admin page loaders", () => {
 	});
 
 	it("leaves inquiry reads to the authenticated paginated browser query", async () => {
-		await expect(loadInquiries(eventWithStatus("authorized") as never)).resolves.toEqual({
-			inquiries: [],
-		});
+		await expect(loadInquiries(eventWithStatus("authorized") as never)).resolves.toBeUndefined();
 		expect(mockCreateAuthenticatedClient).not.toHaveBeenCalled();
 	});
 });

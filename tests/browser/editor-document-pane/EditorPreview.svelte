@@ -61,7 +61,6 @@ setAdminConfig({
 	fromEmail: "Preview <hello@example.invalid>",
 	authClient,
 	galleryWorkerUrl: "https://example.invalid",
-	mutationTransport: "websocket",
 	api: { ...adminConfig.api, notifications: undefined },
 	editor: {
 		...adminConfig.editor,

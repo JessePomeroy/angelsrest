@@ -50,14 +50,6 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			archive: api.postContent.archive,
 			restore: api.postContent.restore,
 		},
-		catalogProducts: {
-			listForEditor: api.catalogProducts.listForEditor,
-			getEditorState: api.catalogProducts.getEditorState,
-			createDraft: api.catalogProducts.createDraft,
-			saveDraft: api.catalogProducts.saveDraft,
-			discardDraft: api.catalogProducts.discardDraft,
-			remove: api.catalogProducts.remove,
-		},
 		gmailConversations: {
 			connection: api.gmailConversations.connection,
 			list: api.gmailConversations.list,

@@ -39,7 +39,7 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "messages:allThreadsPaginated": return pageOf([{ client: data.platformClients[0], unreadCount: 0, latestMessage: data.messages[0] }]);
 		case "messages:listPaginated": return pageOf(data.messages);
 		case "kanban:listBoardConfigs": return list([{ _id: "demo-board-1", _creationTime: data.now, siteUrl: data.siteUrl, projectType: "wedding", columns: [{ id: "lead", name: "New inquiry", position: 0 }, { id: "booked", name: "Booked", position: 1 }, { id: "complete", name: "Delivered", position: 2 }] }]);
-		case "galleries:listBySite": return list(data.galleries);
+		case "galleries:listBySitePaginated": return pageOf(data.galleries);
 		case "galleries:getUploadPolicy": return params.get("uploadPolicy") === "media" ? "media" : "all-files";
 		case "galleries:get": return data.galleries.find(gallery => gallery._id === args.id) ?? null;
 		case "galleries:getImages": return [];
@@ -49,9 +49,7 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "catalogPrivateAssets:listForCleanup": return pageOf([{ id: "demo-private-cleanup", kind: args.kind, filename: args.kind === "paid_digital_file" ? "unused-download.zip" : "unused-print-master.jpg", sizeBytes: 2048000, status: "verified" }]);
 		case "catalogPrivateAssets:listExpiredUploadsForCleanup": return pageOf([{ id: "demo-expired-cleanup", kind: args.kind, filename: "expired-upload.jpg", sizeBytes: 2048000, status: "expired" }]);
 		case "mediaAssets:getManyForEditor": return [];
-		case "catalogProducts:listForEditor":
 		case "catalogProductGraphs:listForEditor": return detail ? list(data.productSummaries.filter(product => !args.productKind || product.productKind === args.productKind)) : [];
-		case "catalogProducts:getEditorState":
 		case "catalogProductGraphs:getEditorState": return data.product;
 		case "postContent:listForEditor": return detail ? list(data.postSummaries) : [];
 		case "postContent:getEditorState": return data.post;

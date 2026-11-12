@@ -11,7 +11,6 @@ const {
 	apiMock,
 	blogApi,
 	postApi,
-	catalogApi,
 	catalogGraphApi,
 	contentApi,
 	documentEmailApi,
@@ -27,14 +26,6 @@ const {
 		});
 	const blogApi = editorRefs("blogContent");
 	const postApi = editorRefs("postContent");
-	const catalogApi = {
-		listForEditor: "catalogProducts.listForEditor",
-		getEditorState: "catalogProducts.getEditorState",
-		createDraft: "catalogProducts.createDraft",
-		saveDraft: "catalogProducts.saveDraft",
-		discardDraft: "catalogProducts.discardDraft",
-		remove: "catalogProducts.remove",
-	};
 	const catalogGraphRefs = {
 		listForEditor: "catalogProductGraphs.listForEditor",
 		getEditorState: "catalogProductGraphs.getEditorState",
@@ -72,7 +63,7 @@ const {
 		publishAboutPage: "content.publishAboutPage",
 		discardAboutPageDraft: "content.discardAboutPageDraft",
 	};
-	const galleriesApi = { listBySite: "galleries.listBySite" };
+	const galleriesApi = { listBySitePaginated: "galleries.listBySitePaginated" };
 	const documentEmailApi = {
 		get: "documentEmailAttempts.get",
 		getRecovery: "documentEmailAttempts.getRecovery",
@@ -100,7 +91,6 @@ const {
 	};
 	const apiMock = new Proxy(
 		{
-			catalogProducts: catalogApi,
 			catalogProductGraphs: catalogGraphApi,
 			content: contentApi,
 			documentEmailAttempts: documentEmailApi,
@@ -136,7 +126,6 @@ const {
 	return {
 		blogApi,
 		postApi,
-		catalogApi,
 		catalogGraphApi,
 		contentApi,
 		documentEmailApi,
@@ -182,8 +171,7 @@ describe("admin platform capabilities", () => {
 			expect(Reflect.get(configured ?? {}, "importSanityBlogDrafts")).toBeUndefined();
 			expect(Reflect.get(configured ?? {}, "restorePublishedManifest")).toBeUndefined();
 		}
-		expect(adminConfig.api.catalogProducts).toEqual(catalogApi);
-		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
+		expect(adminConfig.api).not.toHaveProperty("catalogProducts");
 		const productGraphApi = adminConfig.api.catalogProductGraphs;
 		expect(productGraphApi).not.toBe(catalogGraphApi);
 		expect(Object.getPrototypeOf(productGraphApi)).toBe(Object.prototype);
@@ -210,7 +198,10 @@ describe("admin platform capabilities", () => {
 		expect(adminConfig.api.mediaAssets?.listForEditor).toBe(mediaApi.listForEditor);
 		expect(adminConfig.api.mediaAssets?.getManyForEditor).toBe(mediaApi.getManyForEditor);
 		expect(adminConfig.api.mediaAssets?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
-		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
+		expect(adminConfig.api.galleryDelivery?.listBySitePaginated).toBe(
+			galleriesApi.listBySitePaginated,
+		);
+		expect(adminConfig.api.galleryDelivery).not.toHaveProperty("listBySite");
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
 		expect(adminConfig.api.crm?.getStats).toBe(apiMock.crm.getStats);
 		expect(adminConfig.api.documentEmailAttempts).toBeUndefined();
