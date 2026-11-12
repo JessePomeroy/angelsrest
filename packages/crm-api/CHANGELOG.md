@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 6.15.2
+
+### Patch Changes
+
+- Updated dependencies [78652e3]
+  - @jessepomeroy/print-catalog@0.4.0
+
 ## 6.15.1
 
 ### Patch Changes
