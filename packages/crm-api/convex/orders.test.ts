@@ -4,6 +4,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { reservationHandleHash, reservationSnapshotDigest } from "./helpers/checkoutSnapshot";
 import { recordOrderRevenue, seedEmptyOrderRevenue } from "./helpers/orderRevenue";
 import schema from "./schema";
@@ -163,6 +164,40 @@ async function seedRawLegacyPrintOrder(
 	}));
 }
 
+/**
+ * Model a row left by a retired coordinator: V1 wrote only an uncertain claim;
+ * V2/V3 wrote a tokenized preparation lease (V3 also stamped version 3).
+ */
+async function seedRetiredPrintClaim(
+	t: ReturnType<typeof convexTest>,
+	orderId: Id<"orders">,
+	claimToken?: string,
+	coordinatorVersion?: 3,
+) {
+	const now = Date.now();
+	await t.run((ctx) => ctx.db.patch(orderId, claimToken === undefined
+		? { printFulfillmentClaim: true, printFulfillmentResolution: "submission_uncertain" as const }
+		: {
+				printFulfillmentClaim: true,
+				printFulfillmentClaimToken: claimToken,
+				printFulfillmentPhase: "preparing" as const,
+				printFulfillmentClaimedAt: now,
+				printFulfillmentLeaseExpiresAt: now + 15 * 60 * 1000,
+				...(coordinatorVersion === undefined ? {} : { printFulfillmentCoordinatorVersion: coordinatorVersion }),
+			}));
+}
+
+async function openProviderSubmission(t: ReturnType<typeof convexTest>, siteUrl = SITE_URL) {
+	const now = Date.now();
+	await t.run((ctx) => ctx.db.insert("commercePurposeControls", {
+		siteUrl, purpose: "new_provider_submission", state: "open", generation: 1, createdAt: now, updatedAt: now,
+	}));
+}
+
+function claimPrintV5(t: ReturnType<typeof convexTest>, orderId: Id<"orders">, claimToken = CLAIM_TOKEN_A) {
+	return t.mutation(api.orders.claimPrintFulfillmentV5, { orderId, claimToken, webhookSecret: WEBHOOK_SECRET });
+}
+
 async function seedLumaPrintsOrder() {
 	const t = convexTest(schema, modules);
 	const created = await t.mutation(api.orders.create, {
@@ -175,10 +210,7 @@ async function seedLumaPrintsOrder() {
 		total: 42,
 		fulfillmentType: "lumaprints",
 	});
-	await t.mutation(api.orders.claimPrintFulfillment, {
-		orderId: created._id,
-		webhookSecret: WEBHOOK_SECRET,
-	});
+	await seedRetiredPrintClaim(t, created._id);
 	await t.mutation(api.orders.updateStatus, {
 		orderId: created._id,
 		webhookSecret: WEBHOOK_SECRET,
@@ -604,13 +636,13 @@ describe("print fulfillment fence", () => {
 			"tenant-b.example",
 			"ORD-005",
 		);
-		const claim = (orderId: typeof first._id) =>
-			t.mutation(api.orders.claimPrintFulfillment, {
-				orderId, webhookSecret: WEBHOOK_SECRET,
-			});
+		await openProviderSubmission(t);
+		await openProviderSubmission(t, "tenant-b.example");
+		const claim = (orderId: typeof first._id) => claimPrintV5(t, orderId);
 		const duplicate = await Promise.all([claim(first._id), claim(first._id)]);
-		expect(duplicate.map(({ kind }) => kind).sort()).toEqual(["claimed", "reconcile"]);
-		expect(duplicate.every((result) => result.externalId === "cs_test_tenantAglobal1234")).toBe(true);
+		expect(duplicate.map(({ kind }) => kind).sort()).toEqual(["claimed", "preparing"]);
+		expect(duplicate.find((result) => result.kind === "claimed"))
+			.toMatchObject({ externalId: "cs_test_tenantAglobal1234" });
 		await expect(claim(second._id)).resolves.toMatchObject({
 			kind: "claimed", externalId: "cs_test_tenantBglobal1234",
 		});
@@ -649,13 +681,10 @@ describe("print fulfillment fence", () => {
 		}
 	});
 
-	test("accepts the exact baseline V1 and V2 webhook completion sequences", async () => {
+	test("completes historical V1 and V2 claims through the exact webhook result", async () => {
 		const t = convexTest(schema, modules);
 		const v1 = await t.mutation(api.orders.create, orderArgs("cs_test_baselinev112345678"));
-		await expect(t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: v1._id,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "claimed", externalId: "cs_test_baselinev112345678" });
+		await seedRetiredPrintClaim(t, v1._id);
 		await expect(t.mutation(api.orders.updateStatus, {
 			orderId: v1._id,
 			webhookSecret: WEBHOOK_SECRET,
@@ -663,11 +692,7 @@ describe("print fulfillment fence", () => {
 		})).resolves.toBeNull();
 
 		const v2 = await t.mutation(api.orders.create, orderArgs("cs_test_baselinev212345678"));
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: v2._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, v2._id, CLAIM_TOKEN_A);
 		await expect(t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: v2._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -705,27 +730,19 @@ describe("print fulfillment fence", () => {
 		}
 	});
 
-	test("accepts the baseline V2 GET-reconciliation retry sequence", async () => {
+	test("reconciles a historical V2 submission through the current coordinator", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(
 			api.orders.create,
 			orderArgs("cs_test_baselinev2reconcile1234"),
 		);
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
 			webhookSecret: WEBHOOK_SECRET,
 		});
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B)).resolves.toEqual({
 			kind: "reconcile",
 			externalId: "cs_test_baselinev2reconcile1234",
 		});
@@ -748,37 +765,12 @@ describe("print fulfillment fence", () => {
 				api.orders.create,
 				orderArgs(`cs_test_invalidlegacy${providerNumber.length}123456`),
 			);
-			await t.mutation(api.orders.claimPrintFulfillment, {
-				orderId: legacy._id,
-				webhookSecret: WEBHOOK_SECRET,
-			});
+			await seedRetiredPrintClaim(t, legacy._id);
 			await expect(t.mutation(api.orders.updateStatus, {
 				orderId: legacy._id,
 				webhookSecret: WEBHOOK_SECRET,
 				lumaprintsOrderNumber: providerNumber,
 			})).rejects.toThrow("Invalid LumaPrints order number");
-
-			const tokenized = await t.mutation(
-				api.orders.create,
-				orderArgs(`cs_test_invalidtoken${providerNumber.length}1234567`),
-			);
-			await t.mutation(api.orders.claimPrintFulfillmentV2, {
-				orderId: tokenized._id,
-				claimToken: CLAIM_TOKEN_A,
-				webhookSecret: WEBHOOK_SECRET,
-			});
-			await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
-				orderId: tokenized._id,
-				claimToken: CLAIM_TOKEN_A,
-				webhookSecret: WEBHOOK_SECRET,
-			});
-			await expect(t.mutation(api.orders.completePrintFulfillmentSubmission, {
-				orderId: tokenized._id,
-				claimToken: CLAIM_TOKEN_A,
-				externalId: `cs_test_invalidtoken${providerNumber.length}1234567`,
-				lumaprintsOrderNumber: providerNumber,
-				webhookSecret: WEBHOOK_SECRET,
-			})).rejects.toThrow("Invalid print fulfillment result");
 			await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 				orderId: legacy._id,
 				externalId: `cs_test_invalidlegacy${providerNumber.length}123456`,
@@ -794,10 +786,7 @@ describe("print fulfillment fence", () => {
 			api.orders.create,
 			orderArgs("cs_test_providerboundary123456"),
 		);
-		await t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: created._id,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id);
 		const providerNumber = "9".repeat(64);
 		await expect(t.mutation(api.orders.updateStatus, {
 			orderId: created._id,
@@ -823,10 +812,7 @@ describe("print fulfillment fence", () => {
 		}));
 		const admin = t.withIdentity({ email: "owner@tenant.example", emailVerified: true });
 		const created = await t.mutation(api.orders.create, orderArgs("cs_test_rejectcompat123456"));
-		await t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: created._id,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id);
 
 		await expect(t.mutation(api.orders.updateStatus, {
 			orderId: created._id,
@@ -848,11 +834,7 @@ describe("print fulfillment fence", () => {
 			api.orders.create,
 			orderArgs("cs_test_preparingnotsubmitted1234"),
 		);
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: preparing._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, preparing._id, CLAIM_TOKEN_A);
 		await expect(t.mutation(api.orders.updateStatus, {
 			orderId: preparing._id,
 			webhookSecret: WEBHOOK_SECRET,
@@ -870,10 +852,7 @@ describe("print fulfillment fence", () => {
 			})).rejects.toThrow("requires a claimed or resolved submission");
 
 			const other = await t.mutation(api.orders.create, orderArgs("cs_test_providerowner123456"));
-			await t.mutation(api.orders.claimPrintFulfillment, {
-				orderId: other._id,
-				webhookSecret: WEBHOOK_SECRET,
-			});
+			await seedRetiredPrintClaim(t, other._id);
 			await t.mutation(api.orders.updateStatus, {
 				orderId: other._id,
 				webhookSecret: WEBHOOK_SECRET,
@@ -1018,10 +997,10 @@ describe("provider-authoritative manual refunds", () => {
 		await expect(
 			t.mutation(api.orders.reconcileSucceededManualRefund, refundArgs),
 		).resolves.toEqual({ kind: "replayed" });
-		await expect(t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: created._id,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "busy" });
+		await expect(claimPrintV5(t, created._id)).resolves.toEqual({
+			kind: "manual_refunded",
+			stripeRefundId: MANUAL_REFUND.refund,
+		});
 		await expect(
 			t.mutation(
 				api.orders.reconcileSucceededManualRefund,
@@ -1135,13 +1114,8 @@ describe("provider-authoritative manual refunds", () => {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await expect(
-			t.mutation(api.orders.claimPrintFulfillmentV2, {
-				orderId: created._id,
-				claimToken: CLAIM_TOKEN_A,
-				webhookSecret: WEBHOOK_SECRET,
-			}),
-		).resolves.toMatchObject({ kind: "claimed" });
+		await openProviderSubmission(t);
+		await expect(claimPrintV5(t, created._id)).resolves.toMatchObject({ kind: "claimed" });
 		await expect(
 			t.mutation(api.orders.releasePrintFulfillmentClaim, {
 				orderId: created._id,
@@ -1160,17 +1134,11 @@ describe("provider-authoritative manual refunds", () => {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await openProviderSubmission(t);
+		await expect(claimPrintV5(t, created._id)).resolves.toMatchObject({ kind: "claimed" });
 		await t.run((ctx) => ctx.db.patch(created._id, { printFulfillmentLeaseExpiresAt: 0 }));
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toMatchObject({ kind: "claimed" });
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B))
+			.resolves.toMatchObject({ kind: "claimed" });
 		await expect(t.mutation(api.orders.releasePrintFulfillmentClaim, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -1183,17 +1151,13 @@ describe("provider-authoritative manual refunds", () => {
 		})).resolves.toEqual({ kind: "lost" });
 	});
 
-	test("keeps a released V3 row unavailable to legacy V1/V2 coordinators", async () => {
+	test("keeps a released historical V3 row unavailable to the current coordinator", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toMatchObject({ kind: "claimed" });
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A, 3);
 		await expect(t.mutation(api.orders.releasePrintFulfillmentClaim, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -1202,91 +1166,8 @@ describe("provider-authoritative manual refunds", () => {
 		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
 			printFulfillmentCoordinatorVersion: 3,
 		});
-		await expect(t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: created._id,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "busy" });
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "busy" });
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toMatchObject({ kind: "claimed" });
-	});
-
-	test("preserves every exact V2 return shape for the baseline host decoder", async () => {
-		const t = convexTest(schema, modules);
-		let sequence = 0;
-		const makeOrder = async (patch: Record<string, unknown> = {}) => {
-			sequence += 1;
-			const created = await t.mutation(api.orders.create, orderArgs(
-				`cs_test_v2compat${sequence}12345678`,
-			));
-			if (Object.keys(patch).length > 0) {
-				await t.run((ctx) => ctx.db.patch(created._id, patch));
-			}
-			return created._id;
-		};
-		const claim = (orderId: Awaited<ReturnType<typeof makeOrder>>) =>
-			t.mutation(api.orders.claimPrintFulfillmentV2, {
-				orderId,
-				claimToken: CLAIM_TOKEN_B,
-				webhookSecret: WEBHOOK_SECRET,
-			});
-
-		await expect(claim(await makeOrder({
-			lumaprintsOrderNumber: "2101",
-			printFulfillmentResolution: "resolved",
-		}))).resolves.toEqual({ kind: "fulfilled", orderNumber: "2101" });
-		await expect(claim(await makeOrder({
-			printFulfillmentClaim: true,
-		}))).resolves.toEqual({
-			kind: "reconcile",
-			externalId: "cs_test_v2compat212345678",
-		});
-		await expect(claim(await makeOrder({
-			status: "refunded",
-			stripeRefundId: "re_manualcompat123456",
-		}))).resolves.toEqual({
-			kind: "manual_refunded",
-			stripeRefundId: "re_manualcompat123456",
-		});
-		await expect(claim(await makeOrder({
-			status: "fulfillment_error",
-			fulfillmentError: "Provider rejected fulfillment",
-			fulfillmentRecoveryStatus: "refunded",
-			stripeRefundId: "re_autocompat12345678",
-		}))).resolves.toEqual({
-			kind: "automated_refunded",
-			stripeRefundId: "re_autocompat12345678",
-		});
-		await expect(claim(await makeOrder({
-			status: "fulfillment_error",
-			fulfillmentError: "Provider rejected fulfillment",
-			fulfillmentRecoveryStatus: "refund_pending",
-		}))).resolves.toEqual({ kind: "busy" });
-		await expect(claim(await makeOrder({
-			printFulfillmentClaim: true,
-			printFulfillmentClaimToken: CLAIM_TOKEN_A,
-			printFulfillmentPhase: "submitting",
-			printFulfillmentResolution: "reconciliation_blocked",
-			printFulfillmentReconciliationClass: "response_contract",
-		}))).resolves.toEqual({ kind: "busy" });
-		await expect(claim(await makeOrder({
-			printFulfillmentClaim: true,
-			printFulfillmentClaimToken: CLAIM_TOKEN_A,
-			printFulfillmentPhase: "preparing",
-			printFulfillmentLeaseExpiresAt: Date.now() + 60_000,
-		}))).resolves.toEqual({ kind: "preparing" });
-		await expect(claim(await makeOrder())).resolves.toEqual({
-			kind: "claimed",
-			externalId: "cs_test_v2compat812345678",
-			leaseExpiresAt: expect.any(Number),
-		});
+		await openProviderSubmission(t);
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B)).resolves.toEqual({ kind: "busy" });
 	});
 
 	test.each(["printing", "ready", "shipped", "delivered"] as const)(
@@ -1298,11 +1179,8 @@ describe("provider-authoritative manual refunds", () => {
 				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 			});
 			await t.run((ctx) => ctx.db.patch(created._id, { status }));
-			await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-				orderId: created._id,
-				claimToken: CLAIM_TOKEN_A,
-				webhookSecret: WEBHOOK_SECRET,
-			})).resolves.toEqual({ kind: "busy" });
+			await openProviderSubmission(t);
+			await expect(claimPrintV5(t, created._id)).resolves.toEqual({ kind: "busy" });
 			expect((await t.run((ctx) => ctx.db.get(created._id)))?.printFulfillmentClaim)
 				.toBeUndefined();
 		},
@@ -1364,11 +1242,7 @@ describe("provider-authoritative manual refunds", () => {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A, 3);
 		await expect(t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -1388,11 +1262,8 @@ describe("provider-authoritative manual refunds", () => {
 			printFulfillmentResolution: "submission_uncertain",
 			printFulfillmentCoordinatorVersion: 3,
 		});
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "reconcile", externalId: MANUAL_REFUND.session });
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B))
+			.resolves.toEqual({ kind: "reconcile", externalId: MANUAL_REFUND.session });
 		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId: created._id,
 			externalId: MANUAL_REFUND.session,
@@ -1419,19 +1290,14 @@ describe("provider-authoritative manual refunds", () => {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
 			webhookSecret: WEBHOOK_SECRET,
 		});
-		await expect(t.mutation(api.orders.completePrintFulfillmentSubmission, {
+		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
 			externalId: MANUAL_REFUND.session,
 			lumaprintsOrderNumber: "1202",
 			webhookSecret: WEBHOOK_SECRET,
@@ -1459,11 +1325,7 @@ describe("provider-authoritative manual refunds", () => {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A, 3);
 
 		const [submission, refund] = await Promise.all([
 			t.mutation(api.orders.beginPrintFulfillmentSubmission, {
@@ -1496,11 +1358,7 @@ describe("provider-authoritative manual refunds", () => {
 			expect(stored?.printFulfillmentClaim).toBeUndefined();
 			expect(stored?.printFulfillmentPhase).toBeUndefined();
 		}
-		const retry = t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		const retry = claimPrintV5(t, created._id, CLAIM_TOKEN_B);
 		if (submission.kind === "submitting") {
 			await expect(retry).resolves.toEqual({
 				kind: "reconcile",
@@ -1514,17 +1372,13 @@ describe("provider-authoritative manual refunds", () => {
 		}
 	});
 
-	test("lets a verified manual refund clear a V3 preparation lease and block its POST fence", async () => {
+	test("lets a verified manual refund clear a historical V3 preparation lease and block its POST fence", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toMatchObject({ kind: "claimed" });
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A, 3);
 
 		await expect(
 			t.mutation(api.orders.reconcileSucceededManualRefund, manualRefundArgs()),
@@ -1599,11 +1453,7 @@ describe("provider-authoritative manual refunds", () => {
 			api.orders.create,
 			orderArgs("cs_test_definiterejection1234"),
 		);
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -1651,11 +1501,7 @@ describe("provider-authoritative manual refunds", () => {
 			api.orders.claimAutomatedFulfillmentRefundV2,
 			refundClaimArgs(CLAIM_TOKEN_B),
 		)).resolves.toEqual({ kind: "unavailable" });
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "busy" });
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B)).resolves.toEqual({ kind: "busy" });
 	});
 
 	test("clears a canceled order's exact-token provider fence", async () => {
@@ -1685,50 +1531,13 @@ describe("provider-authoritative manual refunds", () => {
 		expect(stored).not.toHaveProperty("printFulfillmentResolution");
 	});
 
-	test("lets a legacy host consume a definite-rejection refund marker only once", async () => {
-		const t = convexTest(schema, modules);
-		const created = await t.mutation(api.orders.create, {
-			...orderArgs("cs_test_legacydefiniterejection123"),
-			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
-		});
-		const fulfillmentError = "Print provider rejected fulfillment";
-		await t.run((ctx) => ctx.db.patch(created._id, {
-			status: "fulfillment_error",
-			fulfillmentError,
-			fulfillmentRecoveryStatus: "refund_pending",
-			automatedRefundPreRequestProtocol: "print_rejection_v1",
-		}));
-		const args = (claimToken: string) => ({
-			orderId: created._id,
-			claimToken,
-			fulfillmentError,
-			webhookSecret: WEBHOOK_SECRET,
-		});
-
-		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, args(CLAIM_TOKEN_A)))
-			.resolves.toMatchObject({ kind: "claimed" });
-		expect((await t.run((ctx) => ctx.db.get(created._id)))?.automatedRefundPreRequestProtocol)
-			.toBeUndefined();
-		await t.run((ctx) => ctx.db.patch(created._id, { automatedRefundLeaseExpiresAt: 0 }));
-		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, args(CLAIM_TOKEN_B)))
-			.resolves.toEqual({ kind: "unavailable" });
-		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
-			fulfillmentRecoveryStatus: "refund_attention",
-			automatedRefundAttentionReason: "request_outcome_unknown",
-		});
-	});
-
 	test("preserves manual refund truth racing a definite provider rejection", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -1762,11 +1571,7 @@ describe("provider-authoritative manual refunds", () => {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A, 3);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -1778,11 +1583,10 @@ describe("provider-authoritative manual refunds", () => {
 			reconciliationClass: "response_contract",
 			webhookSecret: WEBHOOK_SECRET,
 		})).resolves.toBe(true);
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "busy" });
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B)).resolves.toEqual({
+			kind: "reconciliation_blocked",
+			reconciliationClass: "response_contract",
+		});
 		await t.mutation(api.orders.reconcileSucceededManualRefund, manualRefundArgs());
 		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId: created._id,
@@ -1849,11 +1653,8 @@ describe("provider-authoritative manual refunds", () => {
 
 		// Reproduce the exact V1 durable row: the boolean exists and no lease field does.
 		await t.run((ctx) => ctx.db.patch(created._id, { printFulfillmentClaim: true }));
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "reconcile", externalId: MANUAL_REFUND.session });
+		await expect(claimPrintV5(t, created._id))
+			.resolves.toEqual({ kind: "reconcile", externalId: MANUAL_REFUND.session });
 
 		const createdEvent = manualRefundArgs({ stripeEventId: "evt_created1234567890" });
 		const updatedEvent = manualRefundArgs({ stripeEventId: "evt_updated1234567890" });
@@ -2045,12 +1846,9 @@ describe("provider-authoritative manual refunds", () => {
 			),
 		).rejects.toThrow();
 
+		await openProviderSubmission(t);
 		const [claimResult, refundResult] = await Promise.allSettled([
-			t.mutation(api.orders.claimPrintFulfillmentV2, {
-				orderId: created._id,
-				claimToken: CLAIM_TOKEN_A,
-				webhookSecret: WEBHOOK_SECRET,
-			}),
+			claimPrintV5(t, created._id),
 			t.mutation(api.orders.reconcileSucceededManualRefund, manualRefundArgs()),
 		]);
 		const stored = await t.run((ctx) => ctx.db.get(created._id));
@@ -2062,17 +1860,22 @@ describe("provider-authoritative manual refunds", () => {
 				status: "refunded",
 				stripeRefundId: MANUAL_REFUND.refund,
 			});
+			// A refund either precedes the claim or clears its versioned preparation lease.
 			expect(stored?.printFulfillmentClaim).toBeUndefined();
-			expect(claimResult.value).toEqual({
-				kind: "manual_refunded",
-				stripeRefundId: MANUAL_REFUND.refund,
-			});
+			if (claimResult.value.kind === "claimed") {
+				expect(stored?.printFulfillmentCoordinatorVersion).toBe(5);
+			} else {
+				expect(claimResult.value).toEqual({
+					kind: "manual_refunded",
+					stripeRefundId: MANUAL_REFUND.refund,
+				});
+			}
 		} else {
 			expect(refundResult.value).toEqual({
 				kind: "retryable",
 				reason: "print_submission_in_flight",
 			});
-			expect(claimResult.value).toEqual({
+			expect(claimResult.value).toMatchObject({
 				kind: "claimed",
 				externalId: MANUAL_REFUND.session,
 				leaseExpiresAt: expect.any(Number),
@@ -2213,11 +2016,6 @@ describe("automated fulfillment refund claims", () => {
 			stripeRefundId: "re_automatedrefund123456",
 		});
 		for (const audience of ["admin", "customer"] as const) {
-			await expect(t.mutation(api.orders.claimFulfillmentFailureNotification, {
-				orderId: created._id,
-				audience,
-				webhookSecret: WEBHOOK_SECRET,
-			})).resolves.toBe(false);
 			await expect(t.mutation(api.orders.claimFulfillmentFailureNotificationV2, {
 				orderId: created._id,
 				audience,
@@ -2935,38 +2733,6 @@ describe("automated fulfillment refund claims", () => {
 		});
 	});
 
-	test("keeps legacy claims inert for a known pending refund", async () => {
-		const t = convexTest(schema, modules);
-		const created = await t.mutation(api.orders.create, {
-			...orderArgs("cs_test_legacyknownrefund123"),
-			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
-		});
-		const fulfillmentError = "Fulfillment validation rejected";
-		await t.run((ctx) => ctx.db.patch(created._id, {
-			status: "fulfillment_error",
-			fulfillmentError,
-			fulfillmentRecoveryStatus: "refund_pending",
-			automatedRefundId: "re_legacyknownrefund123",
-			automatedRefundStatus: "pending",
-			automatedRefundClaimToken: CLAIM_TOKEN_A,
-			automatedRefundLeaseExpiresAt: 0,
-		}));
-
-		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			fulfillmentError,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "unavailable" });
-		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
-			fulfillmentRecoveryStatus: "refund_pending",
-			automatedRefundId: "re_legacyknownrefund123",
-			automatedRefundStatus: "pending",
-		});
-		expect((await t.run((ctx) => ctx.db.get(created._id)))?.automatedRefundAttentionReason)
-			.toBeUndefined();
-	});
-
 	test("fences a raw baseline no-ID refund checkpoint without new attempt counters", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
@@ -2986,7 +2752,7 @@ describe("automated fulfillment refund claims", () => {
 			automatedRefundLastAttemptAt: undefined,
 		}));
 
-		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, {
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
 			fulfillmentError,
@@ -3305,11 +3071,6 @@ describe("automated fulfillment refund claims", () => {
 		expect((await t.run((ctx) => ctx.db.get(created._id)))
 			?.fulfillmentFailureNotificationProtocol).toBeUndefined();
 		for (const audience of ["admin", "customer"] as const) {
-			await expect(t.mutation(api.orders.claimFulfillmentFailureNotification, {
-				orderId: created._id,
-				audience,
-				webhookSecret: WEBHOOK_SECRET,
-			})).resolves.toBe(false);
 			await expect(t.mutation(api.orders.claimFulfillmentFailureNotificationV2, {
 				orderId: created._id,
 				audience,
@@ -3386,10 +3147,7 @@ describe("order confirmation claim", () => {
 		const t = convexTest(schema, modules);
 		const args = orderArgs("cs_test_confirmationreconcile1234");
 		const created = await t.mutation(api.orders.create, args);
-		await t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: created._id,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id);
 		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId: created._id,
 			externalId: args.stripeSessionId,
@@ -3420,10 +3178,7 @@ describe("order confirmation claim", () => {
 			api.orders.create,
 			orderArgs("cs_test_confirmationunresolved1234"),
 		);
-		await t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: unresolved._id,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, unresolved._id);
 		await expect(t.mutation(api.orders.claimOrderConfirmation, {
 			orderId: unresolved._id,
 			webhookSecret: WEBHOOK_SECRET,
@@ -3433,10 +3188,7 @@ describe("order confirmation claim", () => {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
-		await t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: refunded._id,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, refunded._id);
 		await t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId: refunded._id,
 			externalId: MANUAL_REFUND.session,
@@ -3460,11 +3212,7 @@ describe("print reconciliation operator alert claim", () => {
 		const t = convexTest(schema, modules);
 		const externalId = "cs_test_prolongedget12345678";
 		const created = await t.mutation(api.orders.create, orderArgs(externalId));
-		await t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A, 3);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -3517,11 +3265,7 @@ describe("print reconciliation operator alert claim", () => {
 		expect(stored?.lumaprintsOrderNumber).toBeUndefined();
 		expect(stored?.stripeRefundId).toBeUndefined();
 		expect(stored?.fulfillmentRecoveryStatus).toBeUndefined();
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B)).resolves.toEqual({
 			kind: "reconciliation_blocked",
 			reconciliationClass: "client_error",
 			escalationReason: "result_not_observed",
@@ -3532,11 +3276,7 @@ describe("print reconciliation operator alert claim", () => {
 		const t = convexTest(schema, modules);
 		const externalId = "cs_test_agedresourceget123456";
 		const created = await t.mutation(api.orders.create, orderArgs(externalId));
-		await t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A, 3);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -3566,11 +3306,7 @@ describe("print reconciliation operator alert claim", () => {
 		const t = convexTest(schema, modules);
 		const externalId = "cs_test_alertclaim12345678";
 		const created = await t.mutation(api.orders.create, orderArgs(externalId));
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -3633,11 +3369,10 @@ describe("print reconciliation operator alert claim", () => {
 		expect(stored?.lumaprintsOrderNumber).toBeUndefined();
 		expect(stored?.stripeRefundId).toBeUndefined();
 		expect(stored?.fulfillmentRecoveryStatus).toBeUndefined();
-		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "busy" });
+		await expect(claimPrintV5(t, created._id, CLAIM_TOKEN_B)).resolves.toEqual({
+			kind: "reconciliation_blocked",
+			reconciliationClass: "response_contract",
+		});
 		await expect(t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_B,
@@ -3692,11 +3427,7 @@ describe("print reconciliation operator alert claim", () => {
 		const t = convexTest(schema, modules);
 		const externalId = "cs_test_alertresolved123456";
 		const created = await t.mutation(api.orders.create, orderArgs(externalId));
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -3714,9 +3445,8 @@ describe("print reconciliation operator alert claim", () => {
 			claimToken: CLAIM_TOKEN_B,
 			webhookSecret: WEBHOOK_SECRET,
 		});
-		await t.mutation(api.orders.completePrintFulfillmentSubmission, {
+		await t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
 			externalId,
 			lumaprintsOrderNumber: "99101",
 			webhookSecret: WEBHOOK_SECRET,
@@ -3734,11 +3464,7 @@ describe("print reconciliation operator alert claim", () => {
 		const t = convexTest(schema, modules);
 		const externalId = "cs_test_alertdedupewindow123";
 		const created = await t.mutation(api.orders.create, orderArgs(externalId));
-		await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		});
+		await seedRetiredPrintClaim(t, created._id, CLAIM_TOKEN_A);
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_A,
@@ -4227,52 +3953,6 @@ describe("V2 order shipment email leases", () => {
 			trackingUrl: "https://carrier.example/track/1Z999",
 		};
 	}
-
-	test("retains deprecated site-scoped shipment exports for authenticated admins only", async () => {
-		const { t, orderId } = await seedLumaPrintsOrder();
-		const adminEmail = "shipment-admin@example.com";
-		await t.run((ctx) => ctx.db.insert("platformClients", {
-			name: "Tenant A",
-			email: adminEmail,
-			siteUrl: SITE_URL,
-			tier: "full",
-			subscriptionStatus: "active",
-			adminEmails: [adminEmail],
-			role: "client",
-		}));
-		await expect(t.mutation(api.orders.claimShipmentEmailNotification, {
-			siteUrl: SITE_URL,
-			lumaprintsOrderNumber: "123",
-			webhookSecret: WEBHOOK_SECRET,
-		})).rejects.toThrow("Not authenticated");
-		await expect(t.query(api.orders.getByLumaprintsOrderNumber, {
-			siteUrl: SITE_URL,
-			lumaprintsOrderNumber: "123",
-			webhookSecret: WEBHOOK_SECRET,
-		})).rejects.toThrow("Not authenticated");
-
-		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail, emailVerified: true });
-		await expect(admin.query(api.orders.getByLumaprintsOrderNumber, {
-			siteUrl: SITE_URL,
-			lumaprintsOrderNumber: "123",
-		})).resolves.toMatchObject({ _id: orderId, customerEmail: "customer@example.com" });
-		await expect(admin.mutation(api.orders.claimShipmentEmailNotification, {
-			siteUrl: SITE_URL,
-			lumaprintsOrderNumber: "123",
-			trackingNumber: "ADMIN-TRACK",
-		})).resolves.toMatchObject({ claimed: true });
-		await expect(admin.mutation(api.orders.recordShipmentEmailDelivery, {
-			siteUrl: SITE_URL,
-			lumaprintsOrderNumber: "123",
-			status: "failed",
-			error: "arbitrary private provider text",
-		})).resolves.toMatchObject({ recorded: true });
-		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
-			trackingNumber: "ADMIN-TRACK",
-			shipmentEmailDeliveryStatus: "failed",
-			shipmentEmailDeliveryError: "legacy_delivery_failed",
-		});
-	});
 
 	test("leases once, reports active work as busy, and reclaims an expired lease", async () => {
 		const { t, orderId } = await seedLumaPrintsOrder();

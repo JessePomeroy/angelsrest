@@ -192,14 +192,6 @@ export async function resolvePublishedPostSlug(
 	return { status: "redirect" as const, kind: "post" as const, slug: currentSlug };
 }
 
-export async function listPublishedPosts(
-	ctx: QueryCtx,
-	siteUrl: string,
-	limit: number,
-) {
-	return (await listPublishedPostPage(ctx, siteUrl, 1, limit)).posts;
-}
-
 export async function listPublishedPostPage(
 	ctx: QueryCtx,
 	siteUrl: string,

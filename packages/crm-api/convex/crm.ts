@@ -70,19 +70,6 @@ export const listClients = query({
 	},
 });
 
-export const listClientsPaginated = query({
-	args: {
-		siteUrl: v.string(),
-		paginationOpts: paginationOptsValidator,
-		category: v.optional(categoryValidator),
-		status: v.optional(statusValidator),
-	},
-	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl, "crm");
-		return await clientsByFilter(ctx, args).order("desc").paginate(args.paginationOpts);
-	},
-});
-
 /** Fresh snapshot pages keep the tag join below the transaction row budget. */
 export const listClientsWithTags = query({
 	args: {

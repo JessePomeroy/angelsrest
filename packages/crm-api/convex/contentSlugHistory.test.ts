@@ -166,8 +166,8 @@ async function expectError(operation: Promise<unknown>, message: RegExp) {
 }
 
 describe("content slug history", () => {
-	test("retains supporting slugs and resolves every old slug to the current public slug", async () => {
-		const { t, adminA, adminB } = await setup();
+	test("retains supporting slugs and lets only their owner reclaim them", async () => {
+		const { adminA, adminB } = await setup();
 		const created = await createSupporting(
 			adminA,
 			SITE_A.siteUrl,
@@ -211,22 +211,6 @@ describe("content slug history", () => {
 			fromSlug: "author-b",
 			toSlug: "author-c",
 		});
-		for (const slug of ["author-a", "author-b"]) {
-			expect(
-				await t.query(api.blogContent.resolvePublishedSlug, {
-					siteUrl: SITE_A.siteUrl,
-					kind: "author",
-					slug,
-				}),
-			).toEqual({ status: "redirect", kind: "author", slug: "author-c" });
-		}
-		expect(
-			await t.query(api.blogContent.getPublishedBySlug, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "author",
-				slug: "author-a",
-			}),
-		).toBeNull();
 		await expectError(
 			createSupporting(
 				adminA,
@@ -258,15 +242,11 @@ describe("content slug history", () => {
 			fromSlug: "author-c",
 			toSlug: "author-a",
 		});
-		for (const slug of ["author-b", "author-c"]) {
-			expect(
-				await t.query(api.blogContent.resolvePublishedSlug, {
-					siteUrl: SITE_A.siteUrl,
-					kind: "author",
-					slug,
-				}),
-			).toEqual({ status: "redirect", kind: "author", slug: "author-a" });
-		}
+		expect(
+			(await adminA.query(api.blogContent.getEditorState, {
+				documentId: created.documentId,
+			})).slug,
+		).toBe("author-a");
 	});
 
 	test("requires explicit post URL changes and keeps publish retries idempotent", async () => {

@@ -140,3 +140,28 @@ a separate retirement change, establish all of the following:
 Until those conditions are met, retain the APIs and their tests. This assessment
 completes the bounded investigation; it does not declare retirement safe or
 request a migration, live-data read, deployment or provider retry.
+
+## Retirement — November 11, 2026
+
+The owner approved retiring the superseded entry points in the next major
+`@jessepomeroy/crm-api` release. `orders.ts` no longer exports the V1–V4
+`claimPrintFulfillment*` claims, `completePrintFulfillmentSubmission`, the V1
+`claimAutomatedFulfillmentRefund`, `completeAutomatedFulfillmentRefund`, the V1
+`claimFulfillmentFailureNotification`, or the deprecated site-admin shipment
+exports. The hub already calls only `claimPrintFulfillmentV5` and the V2/V3
+notification and refund coordinators.
+
+Retained behavior:
+
+- `claimPrintFulfillmentV5` still resumes rows admitted under coordinator
+  version 4 and refuses released or unadmitted version-3 rows.
+- `expirePrintFulfillmentPreparationV4` remains the scheduled expiry for both
+  version-4 and version-5 preparation leases.
+- Historical unversioned and version-3 rows stay readable. Begin, reject,
+  reconcile, reconciliation-blocking, manual-refund and shipment-intake paths
+  handle them without the removed claims.
+
+Rollout order: deploy the hub on admin 7 first, then the matching Convex
+functions, then publish the package. Every remaining consumer must have
+stopped calling the removed functions before the Convex deploy. This source
+change does not authorize that deployment.

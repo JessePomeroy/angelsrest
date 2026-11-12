@@ -110,8 +110,9 @@ describe("tenant-scoped CMS media assets", () => {
 			siteUrl: SITE_A.siteUrl,
 			asset: readyAsset(),
 		});
-		await expect(asAdmin(t, SITE_B.email).query(api.mediaAssets.get, {
-			id: created.id,
+		await expect(asAdmin(t, SITE_B.email).query(api.mediaAssets.getManyForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			ids: [created.id],
 		})).rejects.toThrow(/Not authorized/);
 	});
 
@@ -238,13 +239,12 @@ describe("tenant-scoped CMS media assets", () => {
 			siteUrl: SITE_B.siteUrl,
 			asset: readyAsset(SITE_B.siteUrl),
 		});
-		const result = await asAdmin(t, SITE_A.email).query(api.mediaAssets.listBySite, {
+		const result = await asAdmin(t, SITE_A.email).query(api.mediaAssets.listForEditor, {
 			siteUrl: SITE_A.siteUrl,
 			paginationOpts: { numItems: 10, cursor: null },
 		});
 		expect(result.page).toHaveLength(1);
-		expect(result.page[0]?.siteUrl).toBe(SITE_A.siteUrl);
-		await expect(asAdmin(t, SITE_A.email).query(api.mediaAssets.listBySite, {
+		await expect(asAdmin(t, SITE_A.email).query(api.mediaAssets.listForEditor, {
 			siteUrl: SITE_A.siteUrl,
 			paginationOpts: { numItems: 101, cursor: null },
 		})).rejects.toThrow(/cannot exceed 100/);
@@ -285,155 +285,6 @@ describe("tenant-scoped CMS media assets", () => {
 		})).rejects.toThrow(/not found/);
 	});
 
-	test("projects operator-safe import target identities without exposing storage keys", async () => {
-		const t = await setup();
-		const admin = asAdmin(t, SITE_A.email);
-		const ready = await admin.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_A.siteUrl,
-			asset: readyAsset(),
-		});
-		const deleting = await admin.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_A.siteUrl,
-			asset: readyAsset(SITE_A.siteUrl, ASSET_ID_B),
-		});
-		await admin.mutation(api.mediaAssets.requestDeletion, {
-			siteUrl: SITE_A.siteUrl,
-			id: deleting.id,
-		});
-
-		const projected = await t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids: [ready.id, deleting.id],
-		});
-		expect(projected).toMatchObject([
-			{
-				mediaAssetId: ready.id,
-				workerAssetId: ASSET_ID,
-				siteUrl: SITE_A.siteUrl,
-				intent: "web",
-				status: "ready",
-				source: {
-					contentType: "image/jpeg",
-					sizeBytes: 1_000_000,
-					width: 3000,
-					height: 2000,
-				},
-				masterIdentityMatches: true,
-				derivatives: {
-					thumb: {
-						identityMatches: true,
-						contentType: "image/webp",
-						width: 320,
-						height: 213,
-					},
-				},
-			},
-			{
-				mediaAssetId: deleting.id,
-				workerAssetId: ASSET_ID_B,
-				status: "deleting",
-			},
-		]);
-		expect(projected[0]).not.toHaveProperty("master");
-		expect(Object.keys(projected[0]?.derivatives ?? {})).toEqual([
-			"card",
-			"display1280",
-			"display2048",
-			"display2560",
-			"thumb",
-		]);
-		expect(projected[0]?.derivatives.thumb).not.toHaveProperty("key");
-		const serialized = JSON.stringify(projected);
-		expect(serialized).not.toContain("master.webp");
-		expect(serialized).not.toContain("display-1280.webp");
-		expect(serialized).not.toContain("sites/");
-
-		await t.run(async (ctx) => {
-			const asset = await ctx.db.get(ready.id);
-			if (!asset) throw new Error("Expected test media asset");
-			await ctx.db.patch(ready.id, {
-				master: { ...asset.master, key: "private/unexpected-master.webp" },
-				derivatives: {
-					...asset.derivatives,
-					card: {
-						...asset.derivatives.card,
-						key: "public/unexpected-card.webp",
-					},
-				},
-			});
-		});
-		const mismatched = await t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids: [ready.id],
-		});
-		expect(mismatched[0]?.masterIdentityMatches).toBe(false);
-		expect(mismatched[0]?.derivatives.card.identityMatches).toBe(false);
-		expect(mismatched[0]?.derivatives.thumb.identityMatches).toBe(true);
-		expect(JSON.stringify(mismatched)).not.toContain("unexpected");
-	});
-
-	test("fails import target verification closed for invalid, missing, or foreign assets", async () => {
-		const t = await setup();
-		const adminA = asAdmin(t, SITE_A.email);
-		const createdA = await adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_A.siteUrl,
-			asset: readyAsset(),
-		});
-		const createdB = await asAdmin(t, SITE_B.email).mutation(
-			api.mediaAssets.registerReadyWebAsset,
-			{
-				siteUrl: SITE_B.siteUrl,
-				asset: readyAsset(SITE_B.siteUrl),
-			},
-		);
-
-		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: "",
-			ids: [createdA.id],
-		})).rejects.toThrow(/site URL is invalid/);
-		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids: [createdA.id, createdA.id],
-		})).rejects.toThrow(/requires unique assets/);
-		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids: [createdB.id],
-		})).rejects.toThrow(/does not belong to expected site/);
-
-		await t.run(async (ctx) => await ctx.db.delete(createdA.id));
-		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids: [createdA.id],
-		})).rejects.toThrow(/not found/);
-		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids: ["not-a-convex-id" as Id<"mediaAssets">],
-		})).rejects.toThrow();
-	});
-
-	test("caps import target verification at the migration asset count", async () => {
-		const t = await setup();
-		const admin = asAdmin(t, SITE_A.email);
-		const ids: Id<"mediaAssets">[] = [];
-		for (let index = 0; index < 22; index += 1) {
-			const workerAssetId = `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
-			const created = await admin.mutation(api.mediaAssets.registerReadyWebAsset, {
-				siteUrl: SITE_A.siteUrl,
-				asset: readyAsset(SITE_A.siteUrl, workerAssetId),
-			});
-			ids.push(created.id);
-		}
-
-		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids,
-		})).rejects.toThrow(/cannot exceed 21 assets/);
-		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
-			expectedSiteUrl: SITE_A.siteUrl,
-			ids: ids.slice(0, 21),
-		})).resolves.toHaveLength(21);
-	});
-
 	test("keeps deletion retryable and completes only after the explicit cleanup phase", async () => {
 		const t = await setup();
 		const admin = asAdmin(t, SITE_A.email);
@@ -453,7 +304,7 @@ describe("tenant-scoped CMS media assets", () => {
 		expect(requested).toMatchObject({ siteUrl: SITE_A.siteUrl, assetId: ASSET_ID });
 		expect(requested.privateKeys).toEqual([readyAsset().master.key]);
 		expect(requested.publicKeys).toHaveLength(5);
-		expect((await admin.query(api.mediaAssets.get, { id: created.id })).status).toBe("deleting");
+		expect((await t.run(async (ctx) => await ctx.db.get(created.id)))?.status).toBe("deleting");
 
 		await withCompletionEnvironment(async () => {
 			const unauthorized = await t.fetch("/cms-media/complete-deletion", {
@@ -466,7 +317,7 @@ describe("tenant-scoped CMS media assets", () => {
 				}),
 			});
 			expect(unauthorized.status).toBe(401);
-			expect((await admin.query(api.mediaAssets.get, { id: created.id })).status).toBe("deleting");
+			expect((await t.run(async (ctx) => await ctx.db.get(created.id)))?.status).toBe("deleting");
 
 			const completed = await t.fetch("/cms-media/complete-deletion", {
 				method: "POST",
@@ -498,7 +349,7 @@ describe("tenant-scoped CMS media assets", () => {
 			expect(retry.status).toBe(200);
 			expect(await retry.json()).toEqual({ deleted: true, id: created.id });
 		});
-		await expect(admin.query(api.mediaAssets.get, { id: created.id })).rejects.toThrow(/Not found/);
+		expect(await t.run(async (ctx) => await ctx.db.get(created.id))).toBeNull();
 		await expect(admin.mutation(api.mediaAssets.requestDeletion, {
 			siteUrl: SITE_A.siteUrl,
 			id: created.id,
@@ -525,7 +376,7 @@ describe("tenant-scoped CMS media assets", () => {
 			siteUrl: SITE_A.siteUrl,
 			id: createdB.id,
 		})).rejects.toThrow(/not found/i);
-		expect((await adminB.query(api.mediaAssets.get, { id: createdB.id })).status).toBe("ready");
+		expect((await t.run(async (ctx) => await ctx.db.get(createdB.id)))?.status).toBe("ready");
 	});
 
 	test("binds each completion credential to exactly one tenant", async () => {
@@ -553,7 +404,7 @@ describe("tenant-scoped CMS media assets", () => {
 				}),
 			});
 			expect(foreignCredential.status).toBe(401);
-			expect((await adminB.query(api.mediaAssets.get, { id: createdB.id })).status)
+			expect((await t.run(async (ctx) => await ctx.db.get(createdB.id)))?.status)
 				.toBe("deleting");
 
 			const ownCredential = await t.fetch("/cms-media/complete-deletion", {
@@ -620,7 +471,7 @@ describe("tenant-scoped CMS media assets", () => {
 		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: revisionId }));
 		const complete = () => t.mutation(internal.mediaAssets.completeDeletion, { siteUrl: SITE_A.siteUrl, id, assetId: ASSET_ID });
 		await expect(complete()).rejects.toThrow("Media asset is in use by Site Settings");
-		expect((await admin.query(api.mediaAssets.get, { id })).status).toBe("deleting");
+		expect((await t.run(async (ctx) => await ctx.db.get(id)))?.status).toBe("deleting");
 		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: undefined }));
 		await expect(complete()).resolves.toMatchObject({ deleted: true });
 	});

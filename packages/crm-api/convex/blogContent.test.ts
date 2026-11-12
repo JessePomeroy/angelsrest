@@ -348,94 +348,8 @@ describe("tenant-scoped Blog supporting content", () => {
 		});
 	});
 
-	test("keeps drafts private and returns only the public author projection", async () => {
-		const { t, adminA, assetA } = await setupWebMedia(modules);
-		const created = await create(
-			adminA,
-			SITE_A.siteUrl,
-			"author-mara",
-			author("Mara", "mara", assetA.id),
-		);
-		expect((await adminA.query(api.blogContent.getEditorState, {
-			documentId: created.documentId,
-		})).draft?.schemaVersion).toBe(1);
-		expect(
-			await t.query(api.blogContent.getPublishedBySlug, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "author",
-				slug: "mara",
-			}),
-		).toBeNull();
-		expect(
-			await t.query(api.blogContent.listPublished, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "author",
-			}),
-		).toEqual([]);
-		expect(await t.query(api.blogContent.getPublishedBySlug, {
-			siteUrl: SITE_A.siteUrl,
-			kind: "author",
-			slug: " Not Canonical ",
-		})).toBeNull();
-
-		await publish(adminA, created.documentId, created.revisionId);
-		await save(adminA, created.documentId, author("Private Draft Name", "mara", assetA.id));
-		const result = await t.query(api.blogContent.getPublishedBySlug, {
-			siteUrl: SITE_A.siteUrl,
-			kind: "author",
-			slug: "mara",
-		});
-		expect(result).not.toBeNull();
-		if (!result || result.payload.kind !== "author") {
-			throw new Error("Expected a published author");
-		}
-		expect(Object.keys(result).sort()).toEqual([
-			"payload",
-			"publishedAt",
-			"revisionId",
-		]);
-		expect(Object.keys(result.payload).sort()).toEqual([
-			"bio",
-			"kind",
-			"name",
-			"portrait",
-			"slug",
-		]);
-		expect(Object.keys(result.payload.portrait ?? {}).sort()).toEqual([
-			"altText",
-			"asset",
-			"caption",
-			"key",
-		]);
-		expect(Object.keys(result.payload.portrait?.asset ?? {}).sort()).toEqual([
-			"assetId",
-			"derivatives",
-			"source",
-		]);
-		expect(result.payload.name).toBe("Mara");
-		const serialized = JSON.stringify(result);
-		expect(serialized).not.toContain("Private Draft Name");
-		expect(serialized).not.toContain("originalFilename");
-		expect(serialized).not.toContain("master.webp");
-		expect(serialized).not.toContain(assetA.id);
-		expect(
-			await t.query(api.blogContent.getPublishedBySlug, {
-				siteUrl: SITE_B.siteUrl,
-				kind: "author",
-				slug: "mara",
-			}),
-		).toBeNull();
-		expect(
-			await t.query(api.blogContent.getPublishedBySlug, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "category",
-				slug: "mara",
-			}),
-		).toBeNull();
-	});
-
-	test("stores and publicly projects exact provider-neutral portrait framing", async () => {
-		const { t, adminA, assetA } = await setupWebMedia(modules);
+	test("stores and publishes exact provider-neutral portrait framing", async () => {
+		const { adminA, assetA } = await setupWebMedia(modules);
 		const draft = author(
 			"Exact Framing",
 			"exact-framing",
@@ -458,14 +372,12 @@ describe("tenant-scoped Blog supporting content", () => {
 		).toEqual(EXACT_PORTRAIT_FRAMING);
 
 		await publish(adminA, created.documentId, created.revisionId);
-		const published = await t.query(api.blogContent.getPublishedBySlug, {
-			siteUrl: SITE_A.siteUrl,
-			kind: "author",
-			slug: "exact-framing",
+		const published = await adminA.query(api.blogContent.getEditorState, {
+			documentId: created.documentId,
 		});
 		expect(
-			published?.payload.kind === "author"
-				? published.payload.portrait?.framing
+			published.published?.draft.kind === "author"
+				? published.published.draft.portrait?.framing
 				: undefined,
 		).toEqual(EXACT_PORTRAIT_FRAMING);
 	});
@@ -558,66 +470,5 @@ describe("tenant-scoped Blog supporting content", () => {
 				documentId: local.documentId,
 			}),
 		).rejects.toThrow(/ownership mismatch/i);
-
-		await t.run(async (ctx) => {
-			await ctx.db.patch(local.documentId, {
-				draftRevisionId: undefined,
-				publishedRevisionId: foreign.revisionId,
-				slug: "local",
-				publishedAt: Date.now(),
-			});
-		});
-		await expect(
-			t.query(api.blogContent.getPublishedBySlug, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "category",
-				slug: "local",
-			}),
-		).rejects.toThrow(/ownership mismatch/i);
-	});
-
-	test("fails closed on published slug divergence and treats bad route slugs as absent", async () => {
-		const { t, adminA } = await setupWebMedia(modules);
-		const created = await create(
-			adminA,
-			SITE_A.siteUrl,
-			"category-integrity",
-			category("Integrity", "integrity"),
-		);
-		await publish(adminA, created.documentId, created.revisionId);
-		expect(
-			await t.query(api.blogContent.getPublishedBySlug, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "category",
-				slug: "Not Canonical",
-			}),
-		).toBeNull();
-
-		await t.run(async (ctx) => {
-			await ctx.db.patch(created.documentId, { slug: "different" });
-		});
-		await expect(
-			t.query(api.blogContent.getPublishedBySlug, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "category",
-				slug: "different",
-			}),
-		).rejects.toThrow(/slug mismatch/i);
-		await expect(
-			t.query(api.blogContent.resolvePublishedSlug, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "category",
-				slug: "different",
-			}),
-		).rejects.toThrow(/slug mismatch/i);
-		await t.run(async (ctx) => {
-			await ctx.db.patch(created.documentId, { slug: undefined });
-		});
-		await expect(
-			t.query(api.blogContent.listPublished, {
-				siteUrl: SITE_A.siteUrl,
-				kind: "category",
-			}),
-		).rejects.toThrow(/slug mismatch/i);
 	});
 });

@@ -68,30 +68,17 @@ describe("saved LumaPrints order context consumer", () => {
 		expect((await t.mutation(api.orders.create, seed.args)).lumaprintsConnection).toBeUndefined();
 	});
 
-	test("requires the exact saved context before claiming or reconciling, including old workers", async () => {
+	test("requires the exact saved context before claiming or reconciling", async () => {
 		const { t, paid } = await setup();
 		const s = await paid(1);
-		for (const reference of [api.orders.claimPrintFulfillmentV4, api.orders.claimPrintFulfillmentV5]) {
-			expect(await t.mutation(reference, s.command)).toEqual({ kind: "busy" });
-			expect(await t.mutation(reference, { ...s.command, lumaprintsConnection: { ...s.connection, storeId: 202 } })).toEqual({ kind: "busy" });
-		}
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, s.command)).toEqual({ kind: "busy" });
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, { ...s.command, lumaprintsConnection: { ...s.connection, storeId: 202 } })).toEqual({ kind: "busy" });
 		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, { ...s.command, lumaprintsConnection: s.connection })).toMatchObject({ kind: "claimed" });
 		await t.mutation(api.orders.beginPrintFulfillmentSubmission, s.command);
 		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, s.command)).toEqual({ kind: "busy" });
 		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, { ...s.command, lumaprintsConnection: s.connection })).toMatchObject({ kind: "reconcile" });
 		const stored = await t.run(ctx => ctx.db.get(s.order._id));
 		expect(stored?.printFulfillmentResolution).toBe("submission_uncertain");
-	});
-
-	test("refuses legacy V1-V3 access even when a context-bearing row has no job", async () => {
-		const { t, paid } = await setup();
-		const s = await paid(1);
-		await t.run(ctx => ctx.db.patch(s.order._id, { printJobId: undefined }));
-		const args = { orderId: s.order._id, webhookSecret: secret };
-		expect(await t.mutation(api.orders.claimPrintFulfillment, args)).toEqual({ kind: "busy" });
-		for (const reference of [api.orders.claimPrintFulfillmentV2, api.orders.claimPrintFulfillmentV3]) {
-			expect(await t.mutation(reference, { ...args, claimToken })).toEqual({ kind: "busy" });
-		}
 	});
 
 	test("retains historical ownership during retry but rejects corrupted supplier history", async () => {
