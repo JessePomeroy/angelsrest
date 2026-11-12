@@ -161,6 +161,18 @@ Retained behavior:
   reconcile, reconciliation-blocking, manual-refund and shipment-intake paths
   handle them without the removed claims.
 
+Evidence (2026-11-11, read-only production checks without customer data):
+14 orders, all `angelsrest.online`. The non-terminal coordinator-version-4 rows
+are owner-confirmed $1 launch-rehearsal orders (ORD-002 to ORD-009), which V5 and
+the recovery paths above still handle. `galleryDownloads` had 0 rows. The hub has
+called only V5 since #518 (2026-09-05), and no production rollback candidate
+older than that is retained for this retirement.
+
+Before the Convex deploy, re-count `galleryDownloads` in every target deployment
+(`pnpm exec convex data galleryDownloads --deployment <name> --limit 1`). Until
+then `galleries.logDownload` is still a live mutation, so rows could appear. Stop
+if any exist.
+
 Rollout order: deploy the hub on admin 7 first, then the matching Convex
 functions, then publish the package. Every remaining consumer must have
 stopped calling the removed functions before the Convex deploy. This source
