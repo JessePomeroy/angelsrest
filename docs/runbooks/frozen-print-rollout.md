@@ -140,3 +140,42 @@ a separate retirement change, establish all of the following:
 Until those conditions are met, retain the APIs and their tests. This assessment
 completes the bounded investigation; it does not declare retirement safe or
 request a migration, live-data read, deployment or provider retry.
+
+## Retirement — November 11, 2026
+
+The owner approved retiring the superseded entry points in the next major
+`@jessepomeroy/crm-api` release. `orders.ts` no longer exports the V1–V4
+`claimPrintFulfillment*` claims, `completePrintFulfillmentSubmission`, the V1
+`claimAutomatedFulfillmentRefund`, `completeAutomatedFulfillmentRefund`, the V1
+`claimFulfillmentFailureNotification`, or the deprecated site-admin shipment
+exports. The hub already calls only `claimPrintFulfillmentV5` and the V2/V3
+notification and refund coordinators.
+
+Retained behavior:
+
+- `claimPrintFulfillmentV5` still resumes rows admitted under coordinator
+  version 4 and refuses released or unadmitted version-3 rows.
+- `expirePrintFulfillmentPreparationV4` remains the scheduled expiry for both
+  version-4 and version-5 preparation leases.
+- Historical unversioned and version-3 rows stay readable. Begin, reject,
+  reconcile, reconciliation-blocking, manual-refund and shipment-intake paths
+  handle them without the removed claims.
+
+Evidence (2026-11-11, read-only production checks without customer data):
+14 orders, all `angelsrest.online`. The non-terminal coordinator-version-4 rows
+are owner-confirmed $1 launch-rehearsal orders (ORD-002 to ORD-009), which V5 and
+the recovery paths above still handle. `galleryDownloads` had 0 rows. The hub has
+called only V5 since #518 (2026-09-05), and no production rollback candidate
+older than that is retained for this retirement.
+
+Before the Convex deploy, re-count `galleryDownloads` in every target deployment
+from `packages/crm-api`: `pnpm exec convex data galleryDownloads --deployment
+loyal-swan-967 --limit 1` for production and `--deployment rosy-firefly-366` for
+staging. Until
+then `galleries.logDownload` is still a live mutation, so rows could appear. Stop
+if any exist.
+
+Rollout order: deploy the hub on admin 7 first, then the matching Convex
+functions, then publish the package. Every remaining consumer must have
+stopped calling the removed functions before the Convex deploy. This source
+change does not authorize that deployment.

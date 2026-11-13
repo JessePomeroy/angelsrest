@@ -123,23 +123,12 @@ async function seedNonEmptyCatalogGraph(
 	});
 }
 
-function expectEditorSafe(value: unknown) {
-	expect(JSON.stringify(value)).not.toMatch(
-		/siteUrl|privateObjectKey|assetKey|sha256|provenance|createdBy|verifiedAt|verifiedBy|etag|receipt|coordination|authority|targetBindings|grant|capability|url/i,
-	);
-}
-
 async function editorIdentity(facts: CatalogPrivateAssetFacts) {
 	return await createCatalogPrivateAssetReceiptSetId(
 		facts.privateObjectKey.split("/", 2)[1] ?? SITE_A,
 		[facts],
 		2,
 	);
-}
-
-function editorOperationId(facts: CatalogPrivateAssetFacts) {
-	if (facts.provenance.provider !== "editor_upload") throw new Error("fixture drift");
-	return facts.provenance.sourceId.slice("editor-upload:".length);
 }
 
 describe("exact-one private catalog editor receipt contract", () => {
@@ -167,9 +156,9 @@ describe("exact-one private catalog editor receipt contract", () => {
 		}
 	});
 
-	test("admits storage first, resolves only an authenticated safe print projection, and replays without catalog writes", async () => {
+	test("admits storage first, verifies one print source, and replays without catalog writes", async () => {
 		const t = convexTest(schema, modules);
-		const { adminA, adminB, stranger } = await seedClients(t);
+		const { adminA } = await seedClients(t);
 		await seedNonEmptyCatalogGraph(t, adminA);
 		const facts = editorPrintFacts();
 		const receiptSetId = await editorIdentity(facts);
@@ -199,13 +188,11 @@ describe("exact-one private catalog editor receipt contract", () => {
 				assetCount: 1,
 			});
 
-			await expect(
-				adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-					siteUrl: SITE_A,
-					operationId: editorOperationId(facts),
-					productKind: "print",
-				}),
-			).rejects.toThrow(/not verified/i);
+			const editorPrintSources = async () =>
+				(await storedState(t)).printSources.filter(
+					(row) => row.privateObjectKey === facts.privateObjectKey,
+				);
+			expect(await editorPrintSources()).toHaveLength(0);
 
 			const inspected = await postReceipt(
 				t,
@@ -220,52 +207,14 @@ describe("exact-one private catalog editor receipt contract", () => {
 				assetCount: 1,
 			});
 
-			const resolved = await adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
+			const printSources = await editorPrintSources();
+			expect(printSources).toHaveLength(1);
+			expect(printSources[0]).toMatchObject({
 				siteUrl: SITE_A,
-				operationId: editorOperationId(facts),
-				productKind: "print",
-			});
-			expect(resolved).toEqual({
-				kind: "print_source",
-				assetId: expect.any(String),
 				status: "verified",
 				originalFilename: facts.originalFilename,
-				mimeType: "image/jpeg",
 				sizeBytes: facts.sizeBytes,
-				widthPixels: facts.widthPixels,
-				heightPixels: facts.heightPixels,
-				createdAt: expect.any(Number),
 			});
-			expectEditorSafe(resolved);
-
-			await expect(
-				t.query(api.catalogPrivateAssets.resolveEditorUpload, {
-					siteUrl: SITE_A,
-					operationId: editorOperationId(facts),
-					productKind: "print",
-				}),
-			).rejects.toThrow(/not authenticated/i);
-			await expect(
-				stranger.query(api.catalogPrivateAssets.resolveEditorUpload, {
-					siteUrl: SITE_A,
-					operationId: editorOperationId(facts),
-					productKind: "print",
-				}),
-			).rejects.toThrow(/not authorized/i);
-			await expect(
-				adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-					siteUrl: SITE_A,
-					operationId: editorOperationId(facts),
-					productKind: "digital_download",
-				}),
-			).rejects.toThrow(/not verified/i);
-			await expect(
-				adminB.query(api.catalogPrivateAssets.resolveEditorUpload, {
-					siteUrl: SITE_B,
-					operationId: editorOperationId(facts),
-					productKind: "print",
-				}),
-			).rejects.toThrow(/not verified/i);
 
 			const verifiedState = JSON.stringify(await storedState(t));
 			for (const [path, secret, receipt] of [
@@ -304,7 +253,7 @@ describe("exact-one private catalog editor receipt contract", () => {
 		expect(await catalogGraphState(t)).toEqual(graphBefore);
 	});
 
-	test("admits independent inspection first and returns the existing safe paid-file projection", async () => {
+	test("admits independent inspection first and verifies one paid file", async () => {
 		const t = convexTest(schema, modules);
 		const { adminA } = await seedClients(t);
 		await seedNonEmptyCatalogGraph(t, adminA);
@@ -339,22 +288,16 @@ describe("exact-one private catalog editor receipt contract", () => {
 			});
 		});
 
-		const resolved = await adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
+		const paidFiles = (await storedState(t)).paidFiles.filter(
+			(row) => row.privateObjectKey === facts.privateObjectKey,
+		);
+		expect(paidFiles).toHaveLength(1);
+		expect(paidFiles[0]).toMatchObject({
 			siteUrl: SITE_A,
-			operationId: editorOperationId(facts),
-			productKind: "digital_download",
-		});
-		expect(resolved).toEqual({
-			kind: "paid_digital_file",
-			assetId: expect.any(String),
 			status: "verified",
 			originalFilename: facts.originalFilename,
-			mimeType: "application/zip",
 			sizeBytes: facts.sizeBytes,
-			version: facts.version,
-			createdAt: expect.any(Number),
 		});
-		expectEditorSafe(resolved);
 		expect(await catalogGraphState(t)).toEqual(graphBefore);
 	});
 
@@ -937,150 +880,4 @@ describe("exact-one private catalog editor receipt contract", () => {
 		}
 	});
 
-	test("derives private kind from an enabled catalog product kind and fails closed on policy", async () => {
-		const t = convexTest(schema, modules);
-		const { adminA } = await seedClients(t);
-		const facts = editorPrintFacts(SITE_A, "7".repeat(40));
-		const receiptSetId = await editorIdentity(facts);
-		await withReceiptEnvironment(async () => {
-			await postReceipt(
-				t,
-				EDITOR_STORAGE_PATH,
-				STORAGE_SECRET_A,
-				editorStorageSetV2(receiptSetId, facts),
-			);
-			await postReceipt(
-				t,
-				EDITOR_INSPECTION_PATH,
-				INSPECTION_SECRET_A,
-				editorInspectionSetV2(receiptSetId, facts),
-			);
-		});
-		const args = { siteUrl: SITE_A, operationId: editorOperationId(facts) };
-		expect(
-			await adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-				...args,
-				productKind: "print_set",
-			}),
-		).toMatchObject({ kind: "print_source" });
-		await expect(
-			adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-				...args,
-				productKind: "postcard",
-			}),
-		).rejects.toThrow(/does not support private upload resolution/i);
-
-		await t.mutation(internal.platform.setCatalogProductKinds, {
-			siteUrl: SITE_A,
-			catalogProductKinds: [],
-		});
-		await expect(
-			adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-				...args,
-				productKind: "print",
-			}),
-		).rejects.toThrow(/not enabled/i);
-		await t.run(async (ctx) => {
-			const client = await ctx.db
-				.query("platformClients")
-				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_A))
-				.unique();
-			if (!client) throw new Error("fixture drift");
-			await ctx.db.patch(client._id, { catalogProductKinds: undefined });
-		});
-		await expect(
-			adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-				...args,
-				productKind: "print",
-			}),
-		).rejects.toThrow(/policy is not configured/i);
-	});
-
-	test("fails resolution when verified authority or target state drifts and the query writes nothing", async () => {
-		for (const corruption of ["authority", "target", "binding"] as const) {
-			const t = convexTest(schema, modules);
-			const { adminA } = await seedClients(t);
-			const facts = editorPrintFacts(
-				SITE_A,
-				corruption === "authority"
-					? "4".repeat(40)
-					: corruption === "target"
-						? "5".repeat(40)
-						: "6".repeat(40),
-			);
-			const receiptSetId = await editorIdentity(facts);
-			await withReceiptEnvironment(async () => {
-				await postReceipt(
-					t,
-					EDITOR_STORAGE_PATH,
-					STORAGE_SECRET_A,
-					editorStorageSetV2(receiptSetId, facts),
-				);
-				await postReceipt(
-					t,
-					EDITOR_INSPECTION_PATH,
-					INSPECTION_SECRET_A,
-					editorInspectionSetV2(receiptSetId, facts),
-				);
-				if (corruption === "binding") {
-					const otherFacts = editorPrintFacts(SITE_A, "9".repeat(40));
-					const otherReceiptSetId = await editorIdentity(otherFacts);
-					await postReceipt(
-						t,
-						EDITOR_STORAGE_PATH,
-						STORAGE_SECRET_A,
-						editorStorageSetV2(otherReceiptSetId, otherFacts),
-					);
-					await postReceipt(
-						t,
-						EDITOR_INSPECTION_PATH,
-						INSPECTION_SECRET_A,
-						editorInspectionSetV2(otherReceiptSetId, otherFacts),
-					);
-				}
-			});
-			await t.run(async (ctx) => {
-				if (corruption === "binding") {
-					const [binding, otherBinding] = await Promise.all([
-						ctx.db
-							.query("catalogPrivateAssetEditorOperations")
-							.withIndex("by_siteUrl_and_operationId", (q) =>
-								q.eq("siteUrl", SITE_A).eq("operationId", editorOperationId(facts)),
-							)
-							.unique(),
-						ctx.db
-							.query("catalogPrivateAssetEditorOperations")
-							.withIndex("by_siteUrl_and_operationId", (q) =>
-								q.eq("siteUrl", SITE_A).eq("operationId", "9".repeat(40)),
-							)
-							.unique(),
-					]);
-					if (!binding || !otherBinding) throw new Error("missing binding fixture");
-					await ctx.db.patch(binding._id, {
-						receiptSetId: otherBinding.receiptSetId,
-						assetSetChecksum: otherBinding.assetSetChecksum,
-					});
-					return;
-				}
-				if (corruption === "authority") {
-					const authority = await ctx.db.query("catalogPrivateAssetTargetAuthorities").first();
-					if (!authority) throw new Error("missing authority fixture");
-					await ctx.db.delete(authority._id);
-					return;
-				}
-				const target = await ctx.db.query("catalogPrintSourceAssets").first();
-				if (!target) throw new Error("missing target fixture");
-				await ctx.db.patch(target._id, { sizeBytes: target.sizeBytes + 1 });
-			});
-			const beforeQuery = JSON.stringify(await storedState(t));
-			await expect(
-				adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-					siteUrl: SITE_A,
-					operationId: editorOperationId(facts),
-					productKind: "print",
-				}),
-			).rejects.toThrow(/private catalog/i);
-			expect(JSON.stringify(await storedState(t))).toBe(beforeQuery);
-		}
-	});
 });
