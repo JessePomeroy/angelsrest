@@ -5,6 +5,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { reservationHandleHash, reservationSnapshotDigest } from "./helpers/checkoutSnapshot";
+import { recordOrderRevenue, seedEmptyOrderRevenue } from "./helpers/orderRevenue";
 import schema from "./schema";
 import {
 	createGraph,
@@ -4085,10 +4086,13 @@ describe("order Stripe fee capture initialization", () => {
 	test("preserves an unknown fee in order statistics", async () => {
 		const t = convexTest(schema, modules);
 		const adminEmail = "fee-stats-admin@example.com";
-		await t.run((ctx) => ctx.db.insert("platformClients", {
-			name: "Fee Stats", email: adminEmail, siteUrl: SITE_URL, tier: "full",
-			subscriptionStatus: "active", adminEmails: [adminEmail], role: "client",
-		}));
+		await t.run(async (ctx) => {
+			await ctx.db.insert("platformClients", {
+				name: "Fee Stats", email: adminEmail, siteUrl: SITE_URL, tier: "full",
+				subscriptionStatus: "active", adminEmails: [adminEmail], role: "client",
+			});
+			await seedEmptyOrderRevenue(ctx, SITE_URL);
+		});
 		await t.mutation(api.orders.create, {
 			...orderArgs("cs_unknown_fee_stats"),
 		});
@@ -4117,20 +4121,16 @@ describe("order Stripe fee capture initialization", () => {
 				name: "Grouped Fee Stats", email: adminEmail, siteUrl: SITE_URL, tier: "full",
 				subscriptionStatus: "active", adminEmails: [adminEmail], role: "client",
 			});
-			await ctx.db.insert("orders", {
-				...retainedOrder("ORD-101", "cs_grouped_usd"),
-				stripePaymentCurrency: "usd",
-			});
-			await ctx.db.insert("orders", {
-				...retainedOrder("ORD-102", "cs_grouped_eur"),
-				stripePaymentCurrency: "eur",
-			});
-			await ctx.db.insert("orders", retainedOrder("ORD-103", "cs_grouped_unknown"));
-			await ctx.db.insert("orders", {
-				...retainedOrder("ORD-104", "cs_grouped_invalid"),
-				stripePaymentCurrency: "usd",
-				total: Number.NaN,
-			});
+			await seedEmptyOrderRevenue(ctx, SITE_URL);
+			for (const order of [
+				{ ...retainedOrder("ORD-101", "cs_grouped_usd"), stripePaymentCurrency: "usd" },
+				{ ...retainedOrder("ORD-102", "cs_grouped_eur"), stripePaymentCurrency: "eur" },
+				retainedOrder("ORD-103", "cs_grouped_unknown"),
+				{ ...retainedOrder("ORD-104", "cs_grouped_invalid"), stripePaymentCurrency: "usd", total: Number.NaN },
+			]) {
+				const row = await ctx.db.get(await ctx.db.insert("orders", order));
+				if (row) await recordOrderRevenue(ctx, row);
+			}
 		});
 		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail, emailVerified: true });
 		const stats = await admin.query(api.orders.getStats, { siteUrl: SITE_URL });

@@ -5,9 +5,10 @@ import type { Doc } from "./_generated/dataModel";
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
+import { businessSearchText } from "./helpers/businessSearch";
 import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
-test("pages through older invoices and searches them after the bounded backfill", async () => {
+test("pages through older invoices and searches them without a backfill gate", async () => {
 	const t = convexTest(schema, modules);
 	const siteUrl = "audit.example";
 	const email = "audit-admin@example.test";
@@ -39,6 +40,10 @@ test("pages through older invoices and searches them after the bounded backfill"
 				invoiceType: "one-time",
 				status: i === 0 ? "overdue" : "paid",
 				items: [{ description: "Synthetic", quantity: 1, unitPrice: 100 }],
+				searchText: businessSearchText({
+					invoiceNumber: `INV-${String(i).padStart(3, "0")}`,
+					clientName: "Synthetic Client",
+				}),
 			});
 			first ??= id;
 		}
@@ -62,29 +67,6 @@ test("pages through older invoices and searches them after the bounded backfill"
 	expect(
 		(await admin.query(api.businessRecords.get, { siteUrl, kind: "invoices", id: oldId }))?._id,
 	).toBe(oldId);
-	await expect(
-		admin.query(api.businessRecords.list, {
-			siteUrl,
-			kind: "invoices",
-			search: "INV-000",
-			paginationOpts: { numItems: 50, cursor: null },
-		}),
-	).rejects.toThrow("search is preparing");
-	let progressCursor: string | null = null;
-	for (;;) {
-		await t.mutation(internal.businessRecords.backfill, {
-			kind: "invoices",
-			cursor: progressCursor,
-		});
-		const progress = await t.run((ctx) =>
-			ctx.db
-				.query("businessSearchMigrations")
-				.withIndex("by_kind", (q) => q.eq("kind", "invoices"))
-				.unique(),
-		);
-		if (progress?.done) break;
-		progressCursor = progress!.cursor;
-	}
 	const found = await admin.query(api.businessRecords.list, {
 		siteUrl,
 		kind: "invoices",
@@ -112,10 +94,11 @@ test("converted invoices remain searchable by a retained client name after clien
  const clientId = await admin.mutation(api.crm.createClient, {siteUrl, name:"Retained Customer", email:"customer@example.test", category:"photography", type:"portrait"});
  const quoteId = await admin.mutation(api.quotes.create, {siteUrl, clientId, packages:[{name:"Synthetic session", price:100}]});
  await admin.mutation(api.crm.deleteClient, {siteUrl, clientId});
- await t.mutation(internal.businessRecords.backfill, {kind:"invoices", cursor:null});
  const invoiceId = await admin.mutation(api.quotes.convertToInvoice, {siteUrl, quoteId, invoiceType:"one-time"});
  const invoice = await t.run(ctx=>ctx.db.get(invoiceId));
  expect(invoice?.clientName).toBe("Retained Customer");
  const found = await admin.query(api.businessRecords.list, {siteUrl,kind:"invoices",search:"Retained",paginationOpts:{numItems:50,cursor:null}});
  expect(found.page.map(row=>row._id)).toContain(invoiceId);
+ const quotes = await admin.query(api.businessRecords.list, {siteUrl,kind:"quotes",search:"Retained",paginationOpts:{numItems:50,cursor:null}});
+ expect(quotes.page.map(row=>row._id)).toContain(quoteId);
 });

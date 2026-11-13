@@ -1,9 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { internalMutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
 import { requireSiteAdmin } from "./authHelpers";
-import { businessSearchText } from "./helpers/businessSearch";
 
 const kind = v.union(
 	v.literal("orders"),
@@ -70,12 +68,6 @@ export const list = query({
 		};
 		const records = ctx.db.query(args.kind);
 		if (search) {
-			const index = await ctx.db
-				.query("businessSearchMigrations")
-				.withIndex("by_kind", (q) => q.eq("kind", args.kind))
-				.unique();
-			if (!index?.done)
-				throw new Error("Record search is preparing. Refresh shortly; browsing remains available.");
 			const result = await records
 				.withSearchIndex("search_records", (q) => {
 					const scoped = q.search("searchText", search).eq("siteUrl", args.siteUrl);
@@ -118,49 +110,5 @@ export const get = query({
 		if (!id) return null;
 		const row = await ctx.db.get(id);
 		return row?.siteUrl === args.siteUrl ? row : null;
-	},
-});
-
-/** Optional search fields make the schema additive. New hosts enable search only after this bounded backfill completes. */
-export const backfill = internalMutation({
-	args: { kind, cursor: v.union(v.string(), v.null()) },
-	handler: async (ctx, args) => {
-		const previous = await ctx.db
-			.query("businessSearchMigrations")
-			.withIndex("by_kind", (q) => q.eq("kind", args.kind))
-			.unique();
-		if (previous?.done || (previous?.cursor ?? null) !== args.cursor) return;
-		const result = await ctx.db
-			.query(args.kind)
-			.paginate({ numItems: 50, cursor: args.cursor, maximumBytesRead: 1_000_000 });
-		for (const row of result.page) {
-			const searchText = businessSearchText(row);
-			if (row.searchText !== searchText) await ctx.db.patch(row._id, { searchText });
-		}
-		const progress = { kind: args.kind, cursor: result.continueCursor, done: result.isDone };
-		if (previous) await ctx.db.patch(previous._id, progress);
-		else await ctx.db.insert("businessSearchMigrations", progress);
-		if (!result.isDone)
-			await ctx.scheduler.runAfter(0, internal.businessRecords.backfill, {
-				kind: args.kind,
-				cursor: result.continueCursor,
-			});
-	},
-});
-
-export const ensureSearch = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		for (const kind of ["orders", "invoices", "quotes", "contracts"] as const) {
-			const progress = await ctx.db
-				.query("businessSearchMigrations")
-				.withIndex("by_kind", (q) => q.eq("kind", kind))
-				.unique();
-			if (!progress?.done)
-				await ctx.scheduler.runAfter(0, internal.businessRecords.backfill, {
-					kind,
-					cursor: progress?.cursor ?? null,
-				});
-		}
 	},
 });
