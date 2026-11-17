@@ -11,7 +11,8 @@ const detail =
 	params.get("state") === "populated";
 const list = <T>(items: T[]) => (empty ? [] : items);
 const pageOf = <T>(items: T[]) => ({ page: list(items), isDone: true, continueCursor: "" });
-// Render-only lifecycle states. All mutations still reject below.
+// Render-only lifecycle states. Admin mutations use the HTTP proxy stubbed in
+// main.ts, which rejects them; the client mutation() below is a fail-closed guard.
 function publicationFixture<T extends { draft: { revisionId: string } | null; published: { revisionId: string } | null }>(value: T): T {
 	const state = params.get("publication");
 	if (!state || !value.draft) return value;
@@ -129,8 +130,14 @@ function fixtureQuery(name: string, args: Args = {}) {
 					],
 				},
 			]);
+		// AdminLayout only compares this tier with the session tier.
+		case "platform:getFeatureAccess":
+			return { tier: params.get("tier") === "basic" ? "basic" : data.adminSession.tier, siteUrl: data.siteUrl, siteName: "Editor preview", enabledFeatures: [] };
 		case "galleries:listBySitePaginated":
-			return pageOf(data.galleries);
+			return pageOf(data.galleries.filter((gallery) => !args.status || gallery.status === args.status));
+		// No fixture gallery has a submitted proof.
+		case "galleries:listSubmittedProofs":
+			return pageOf([]);
 		case "galleries:getImages":
 			return [];
 		case "portfolioGalleries:listForEditor":
