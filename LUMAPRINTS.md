@@ -532,7 +532,7 @@ LumaPrints acceptance. The Worker retains its own route/runtime tests.
 
 CI checks out the reviewed Worker revision pinned in `.github/workflows/ci.yml`
 under ignored `.contract/gallery-worker`, using the existing read-only
-cross-repository token. Locally, create that same source-only checkout:
+cross-repository token. Locally, create the same checkout:
 
 ```bash
 rev=$(sed -n 's/^ *RELEASE_WORKER_REVISION: *//p' .github/workflows/ci.yml)
