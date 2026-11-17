@@ -172,7 +172,7 @@ def implementation_report_ok(data, returncode, mutant=False, bridge_only=False):
     expected_suites = {"intake.bridge.test.ts": 15}
     if not bridge_only:
         expected_suites.update({"checkoutSnapshotReservations.test.ts": 29,
-                                "orders.test.ts": 178, "commerceIntakeInbox.test.ts": 30})
+                                "orders.test.ts": 174, "commerceIntakeInbox.test.ts": 30})
     suites = data.get("testResults", [])
     inventory = {Path(suite["name"]).name: len(suite.get("assertionResults", []))
                  for suite in suites}

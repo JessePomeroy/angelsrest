@@ -74,7 +74,7 @@ This pilot does not repeat that workflow audit or recreate its infrastructure.
 Inventory found no existing TLA+ model or order-intake formal-verification skill.
 
 The driver **reuses** `checkoutSnapshotReservations.test.ts` (29 tests, including
-concurrent creates, transfer and cleanup), `orders.test.ts` (178 tests, including
+concurrent creates, transfer and cleanup), `orders.test.ts` (174 tests, including
 session replay and numbering), and `commerceIntakeInbox.test.ts` (30 tests,
 including duplicate acceptance, stale leases and recovery). Existing order-intake
 unit/in-memory integration suites also cover fulfillment recovery; they were

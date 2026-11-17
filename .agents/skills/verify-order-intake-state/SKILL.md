@@ -55,7 +55,7 @@ Exit 0 and `summary.json` status `pass` require all of these:
   lookup permits two orders; splitting delete/insert permits a lost reservation.
 - Moving the gate before existing-order recovery violates `CommittedReplayAvailable`;
   uniqueness alone cannot catch this deliberately broken ordering.
-- The real Convex baseline passes 252 tests (237 existing, 15 bridge probes).
+- The real Convex baseline passes 248 tests (233 existing, 15 bridge probes).
 - Removing the actual session lookup in a disposable `orders.ts` copy causes
   exactly three duplicate-row assertion failures. Moving only the producer gate
   causes three expected closed-gate errors, one per scope; each control skips
