@@ -233,3 +233,35 @@ no model, control, probe or bound was edited. `initial_git_status` still describ
 The refresh run's checkout differed from `19bf2031` only in these two snapshot
 records, whose committed heads and scope wording were finalised after the run;
 the source hashes and tree digest are identical to the ones verified.
+
+## Source refresh review 2026-11-16
+
+The Convex debloat (#788, #789, #792) changed six pinned sources, so `check.py`
+reported the correspondence and the copied CRM tree as stale. Each file was
+diffed against `19bf2031`, the revision whose content matched its recorded hash.
+
+| Change | Source | Model impact |
+| --- | --- | --- |
+| Admin 7.0.0 pin (`package.json`, `pnpm-lock.yaml`) | #788 | None. Vitest 4.1.12, convex 1.49.0, convex-test 0.0.52 and @edge-runtime/vm 5.0.0 are unchanged. |
+| Dashboard reads require maintained totals; empty-site seed added (`helpers/orderRevenue.ts`, `orders.ts`) | #789 | None. `recordOrderRevenue`, which `orders.create` calls, is unchanged. Only the dashboard read path and two error messages changed, and the new seed helper is called only by client setup and the one-time migration. |
+| Unused indexes dropped (`schema.ts`) | #789 | None. On the intake tables only `checkoutSnapshotReservations.by_stripeSessionId` was removed. Intake reads reservations through `by_siteUrl_and_handleHash` and orders through retained indexes; the Convex type check rejects any query on a removed index. |
+| Superseded fulfillment, refund and shipment exports removed (`orders.ts`, `schema.ts`) | #792 | None. `orders.create` and all six top-level helpers it reaches are byte-identical, apart from a stray doc comment for the removed `catalogCommerce` export after `consumeReservation`. |
+| Reused `orders.test.ts`: 178 → 174 tests | #792 | None. The four removed tests covered the retired V1/V2 claims, legacy refund markers, the exact V2 return shapes and the deprecated shipment exports; four others were renamed for the historical-row behavior they still test. No session-replay, numbering or create test changed. |
+
+The driver, its report test, the README and the verification skill now pin
+`orders.test.ts` at 174, so the real Convex baseline is 248 tests (233 existing,
+15 bridge probes). No model, control, probe or bound was edited.
+
+A complete rerun at the committed candidate `04d2a624` (sources from main
+`cfc8cf22`), with a clean checkout, reported `Pilot status: pass`:
+
+- Correct connected and platform configurations: each 4,196 generated / 1,206
+  distinct / zero queued.
+- Lookup-removal, split-transfer and gate-first controls: expected violations,
+  at 233/119/54, 22/17/9 and 390/185/75 (generated/distinct/queued).
+- Actual Convex baseline: 248 passed, 0 failed.
+- Both implementation mutations were caught (0 of 3 passed each), and the
+  restored run passed 15 of 15.
+
+The copied tree still has 273 files. The local evidence is in the ignored
+`test-results/order-intake-state-review-20261116/`.
