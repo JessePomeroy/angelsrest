@@ -74,7 +74,7 @@ This pilot does not repeat that workflow audit or recreate its infrastructure.
 Inventory found no existing TLA+ model or order-intake formal-verification skill.
 
 The driver **reuses** `checkoutSnapshotReservations.test.ts` (29 tests, including
-concurrent creates, transfer and cleanup), `orders.test.ts` (178 tests, including
+concurrent creates, transfer and cleanup), `orders.test.ts` (174 tests, including
 session replay and numbering), and `commerceIntakeInbox.test.ts` (30 tests,
 including duplicate acceptance, stale leases and recovery). Existing order-intake
 unit/in-memory integration suites also cover fulfillment recovery; they were
@@ -147,7 +147,9 @@ Source snapshot: per-file SHA-256 hashes in
 [source-snapshot.json](source-snapshot.json), first recorded at HEAD
 `187ca087f859999a7f0b5c82779f39bc89b6e28b` from a clean checkout and refreshed
 at `19bf2031becc0ea4f09f73f696ffaf6516e456bd` after the
-[2026-11-11 review](evidence.md#source-refresh-review-2026-11-11). The runner also checks a digest of the copied CRM source and
+[2026-11-11 review](evidence.md#source-refresh-review-2026-11-11) and at
+`cfc8cf22ab28eb9fc8a7b46f23dbce75f505506e` after the
+[2026-11-16 review](evidence.md#source-refresh-review-2026-11-16). The runner also checks a digest of the copied CRM source and
 fixture tree before/after execution, to detect dependency drift during concurrent
 work. Any correspondence mismatch requires review, not automatic hash refresh.
 The [supplemental source record](refinement-source-snapshot.json) records the

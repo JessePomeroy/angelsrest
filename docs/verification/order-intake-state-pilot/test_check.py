@@ -21,7 +21,7 @@ def passing_report(bridge_only=False):
     counts = {"intake.bridge.test.ts": 15}
     if not bridge_only:
         counts.update({"checkoutSnapshotReservations.test.ts": 29,
-                       "orders.test.ts": 178, "commerceIntakeInbox.test.ts": 30})
+                       "orders.test.ts": 174, "commerceIntakeInbox.test.ts": 30})
     return {
         "success": True, "numTotalTests": sum(counts.values()),
         "numPassedTests": sum(counts.values()), "numFailedTests": 0,
