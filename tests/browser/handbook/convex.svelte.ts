@@ -39,7 +39,7 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "messages:allThreadsPaginated": return pageOf([{ client: data.platformClients[0], unreadCount: 0, latestMessage: data.messages[0] }]);
 		case "messages:listPaginated": return pageOf(data.messages);
 		case "kanban:listBoardConfigs": return list([{ _id: "demo-board-1", _creationTime: data.now, siteUrl: data.siteUrl, projectType: "wedding", columns: [{ id: "lead", name: "New inquiry", position: 0 }, { id: "booked", name: "Booked", position: 1 }, { id: "complete", name: "Delivered", position: 2 }] }]);
-		// AdminLayout only compares this tier with the session tier.
+		// AdminLayout only compares this tier with the session tier; enabledFeatures is unread.
 		case "platform:getFeatureAccess": return { tier: params.get("tier") === "basic" ? "basic" : data.adminSession.tier, siteUrl: data.siteUrl, siteName: "Handbook demonstration", enabledFeatures: [] };
 		case "galleries:listBySitePaginated": return pageOf(data.galleries.filter((gallery) => !args.status || gallery.status === args.status));
 		// No fixture gallery has a submitted proof.
