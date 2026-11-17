@@ -31,7 +31,7 @@ import {
 } from "@jessepomeroy/admin";
 import { adminConfig } from "$lib/config/admin";
 import { page } from "./state.svelte";
-import { adminSession, inquiries, settingsPayload, siteUrl } from "./data";
+import { adminSession, settingsPayload, siteUrl } from "./data";
 
 const route = page.url.pathname;
 const params = new URLSearchParams(window.location.search);
@@ -41,7 +41,6 @@ const session = params.get("tier") === "basic"
 const data = {
 	adminSession: session,
 	newInquiryCount: 0,
-	inquiries,
 	siteSettingsEditorSeed: settingsPayload,
 };
 const refused = async () => ({

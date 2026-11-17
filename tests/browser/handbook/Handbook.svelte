@@ -13,12 +13,12 @@ import HostPlatformPage from "../../../src/routes/admin/platform/+page.svelte";
 import BottomNav from "$lib/components/BottomNav.svelte";
 import { siteSettings } from "./public-data";
 import { page } from "./state.svelte";
-import { adminSession, inquiries, settingsPayload, siteUrl } from "./data";
+import { adminSession, settingsPayload, siteUrl } from "./data";
 
 const params = new URLSearchParams(window.location.search);
 const route = page.url.pathname;
 const session = params.get("tier") === "basic" ? { ...adminSession, tier: "basic" as const, isCreator: false } : adminSession;
-const data = { siteSettings, stripeConnectOnboardingEnabled: params.get("onboarding") === "true", stripeConnectOrigin: "https://hub.example.invalid", adminSession: session, newInquiryCount: 1, inquiries: params.get("state") === "empty" ? [] : inquiries, siteSettingsEditorSeed: settingsPayload };
+const data = { siteSettings, stripeConnectOnboardingEnabled: params.get("onboarding") === "true", stripeConnectOrigin: "https://hub.example.invalid", adminSession: session, newInquiryCount: 1, siteSettingsEditorSeed: settingsPayload };
 const refused = async () => ({ error: { message: "Simulated sign-in failure. This reference never contacts an authentication provider." } });
 const authClient: AdminAuthClient = {
   signIn: { email: refused, social: refused }, signUp: { email: refused },

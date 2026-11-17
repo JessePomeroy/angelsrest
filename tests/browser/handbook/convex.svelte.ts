@@ -39,7 +39,11 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "messages:allThreadsPaginated": return pageOf([{ client: data.platformClients[0], unreadCount: 0, latestMessage: data.messages[0] }]);
 		case "messages:listPaginated": return pageOf(data.messages);
 		case "kanban:listBoardConfigs": return list([{ _id: "demo-board-1", _creationTime: data.now, siteUrl: data.siteUrl, projectType: "wedding", columns: [{ id: "lead", name: "New inquiry", position: 0 }, { id: "booked", name: "Booked", position: 1 }, { id: "complete", name: "Delivered", position: 2 }] }]);
-		case "galleries:listBySitePaginated": return pageOf(data.galleries);
+		// AdminLayout only compares this tier with the session tier; enabledFeatures is unread.
+		case "platform:getFeatureAccess": return { tier: params.get("tier") === "basic" ? "basic" : data.adminSession.tier, siteUrl: data.siteUrl, siteName: "Handbook demonstration", enabledFeatures: [] };
+		case "galleries:listBySitePaginated": return pageOf(data.galleries.filter((gallery) => !args.status || gallery.status === args.status));
+		// No fixture gallery has a submitted proof.
+		case "galleries:listSubmittedProofs": return pageOf([]);
 		case "galleries:getUploadPolicy": return params.get("uploadPolicy") === "media" ? "media" : "all-files";
 		case "galleries:get": return data.galleries.find(gallery => gallery._id === args.id) ?? null;
 		case "galleries:getImages": return [];
@@ -79,6 +83,7 @@ export function useConvexClient() {
 			if (params.get("state") === "error") throw new Error("Simulated read failure");
 			return fixtureQuery(getFunctionName(ref), args);
 		},
+		// Admin mutations use the HTTP proxy stubbed in main.ts; this stays as a fail-closed guard.
 		async mutation() { throw new Error("Simulated save failure: provider writes are disabled in handbook fixtures."); },
 		async action() { throw new Error("Provider actions are disabled in handbook fixtures."); },
 	};
