@@ -17,6 +17,9 @@ init({
 	},
 	tracesSampleRate: 0,
 	sendDefaultPii: false,
+	// Instagram's Android in-app browser injects iabjs:// scripts that throw
+	// on unload ("Java object is gone"). Drop errors that originate there.
+	denyUrls: [/^iabjs:\/\//],
 	beforeBreadcrumb: scrubPrivateCapabilityTelemetry,
 	beforeSend: scrubPrivateCapabilityTelemetry,
 	beforeSendTransaction: scrubPrivateCapabilityTelemetry,
