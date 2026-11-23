@@ -10,10 +10,7 @@ import {
 	requireWebhookCallerOrAuth,
 } from "./authHelpers";
 import { hasValidGalleryAccessGrant } from "./galleryAccess";
-import {
-	DEFAULT_LIST_LIMIT,
-	PORTAL_CAPABILITIES_PER_DOCUMENT_LIMIT,
-} from "./helpers/limits";
+import { PORTAL_CAPABILITIES_PER_DOCUMENT_LIMIT } from "./helpers/limits";
 import {
 	quoteAcceptanceIsOpen,
 	quoteValidUntilExclusiveUtcMs,
@@ -798,17 +795,5 @@ export const markUsed = mutation({
 		if (!tokenDoc) throw new Error("Token not found");
 		await requireDocumentSiteAdmin(ctx, "portalTokens", tokenDoc._id);
 		await ctx.db.patch(tokenDoc._id, { used: true });
-	},
-});
-
-export const listTokens = query({
-	args: { siteUrl: v.string() },
-	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
-		return await ctx.db
-			.query("portalTokens")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(DEFAULT_LIST_LIMIT);
 	},
 });

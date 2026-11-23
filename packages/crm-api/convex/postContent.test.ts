@@ -37,7 +37,6 @@ describe("public Blog pagination", () => {
 		expect(second).toMatchObject({ totalCount: 14, hasNext: false });
 		expect(second.posts.map((post) => post.payload.slug)).toEqual(["page-post-1", "page-post-0"]);
 		expect(new Set([...first.posts, ...second.posts].map((post) => post.payload.slug)).size).toBe(14);
-		expect(await t.query(api.postContent.listPublished, { siteUrl: SITE_A.siteUrl, limit: 12 })).toEqual(first.posts);
 		expect(await t.query(api.postContent.listPublishedPage, { siteUrl: SITE_A.siteUrl, pageNumber: 3, limit: 12 })).toEqual({ posts: [], totalCount: 14, hasNext: false });
 		for (const forbidden of ["private-draft", "other-post", "body", "documentId"]) {
 			expect(JSON.stringify([first, second])).not.toContain(`"${forbidden}"`);
@@ -311,12 +310,12 @@ describe("tenant-scoped Post content graphs", () => {
 		await publishPost(adminB, other.documentId, other.revisionId);
 		const read = () => t.query(api.postContent.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: "owner-note" });
 		expect((await read())?.payload.author).toEqual({ kind: "author", name: "Artist A", slug: "site-owner" });
-		expect((await t.query(api.postContent.listPublished, { siteUrl: SITE_B.siteUrl, limit: 10 }))[0].payload.author).toEqual({ name: "Business B", slug: "site-owner" });
+		expect((await t.query(api.postContent.listPublishedPage, { siteUrl: SITE_B.siteUrl, pageNumber: 1, limit: 10 })).posts[0].payload.author).toEqual({ name: "Business B", slug: "site-owner" });
 		const updated = await adminA.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: settings("New published name") });
 		expect((await read())?.payload.author.name).toBe("Artist A");
 		await adminA.mutation(api.content.publishSiteSettings, { siteUrl: SITE_A.siteUrl, draftRevisionId: updated.revisionId });
 		expect((await read())?.payload.author.name).toBe("New published name");
-		expect((await t.query(api.postContent.listPublished, { siteUrl: SITE_A.siteUrl, limit: 10 }))[0].payload.author.name).toBe("New published name");
+		expect((await t.query(api.postContent.listPublishedPage, { siteUrl: SITE_A.siteUrl, pageNumber: 1, limit: 10 })).posts[0].payload.author.name).toBe("New published name");
 		expect((await adminA.query(api.postContent.getEditorState, { documentId: created.documentId }))?.published?.draft).toMatchObject({ authorSource: "siteSettings" });
 		expect(await adminA.query(api.blogContent.listForEditor, { siteUrl: SITE_A.siteUrl, kind: "author" })).toEqual([]);
 	});
@@ -849,8 +848,9 @@ describe("tenant-scoped Post content graphs", () => {
 			siteUrl: SITE_A.siteUrl,
 			slug: "public-post",
 		});
-		const list = await t.query(api.postContent.listPublished, {
+		const { posts: list } = await t.query(api.postContent.listPublishedPage, {
 			siteUrl: SITE_A.siteUrl,
+			pageNumber: 1,
 			limit: 10,
 		});
 		expect(detail?.payload.title).toBe("A Field Note");
@@ -1253,8 +1253,9 @@ describe("tenant-scoped Post content graphs", () => {
 			});
 		});
 		await expectError(
-			summarySetup.adminA.query(api.postContent.listPublished, {
+			summarySetup.adminA.query(api.postContent.listPublishedPage, {
 				siteUrl: SITE_A.siteUrl,
+				pageNumber: 1,
 				limit: 12,
 			}),
 			/summary checksum mismatch/i,
@@ -1296,8 +1297,9 @@ describe("tenant-scoped Post content graphs", () => {
 			await ctx.db.patch(authorReference._id, { referenceKey: "wrong" });
 		});
 		await expectError(
-			orderSetup.adminA.query(api.postContent.listPublished, {
+			orderSetup.adminA.query(api.postContent.listPublishedPage, {
 				siteUrl: SITE_A.siteUrl,
+				pageNumber: 1,
 				limit: 12,
 			}),
 			/author reference key mismatch/i,
@@ -1401,12 +1403,11 @@ describe("tenant-scoped Post content graphs", () => {
 		expect(Math.max(payloadBytes.technical, payloadBytes.project) * 200).toBeLessThan(
 			8_000_000,
 		);
-		await expect(
-			adminA.query(api.postContent.listPublished, {
-				siteUrl: SITE_A.siteUrl,
-				limit: 12,
-			}),
-		).resolves.toHaveLength(12);
+		expect((await adminA.query(api.postContent.listPublishedPage, {
+			siteUrl: SITE_A.siteUrl,
+			pageNumber: 1,
+			limit: 12,
+		})).posts).toHaveLength(12);
 		await expect(
 			adminA.query(api.postContent.listForEditor, {
 				siteUrl: SITE_A.siteUrl,

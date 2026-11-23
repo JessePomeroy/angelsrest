@@ -9,6 +9,7 @@ source hashes. No live checkout, webhook delivery, supplier account or customer
 record was used. Source drift invalidates the recorded correspondence.
 Refinement review: `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3`, with
 supplementary effect-boundary hashes recorded separately. All source records
-were refreshed after review at `19bf2031` on 2026-11-11; see the pilot evidence.
+were refreshed after review at `19bf2031` on 2026-11-11, and the main source
+snapshot again at `cfc8cf22` on 2026-11-16; see the pilot evidence.
 The same feature now includes producer-gate recovery ordering; see the pilot's
 ordering map and separate refinement evidence.

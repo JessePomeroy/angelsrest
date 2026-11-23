@@ -109,26 +109,3 @@ test("unknown partial payments keep the count but make the amount unavailable", 
 	expect(summary.counts).toEqual({ draft: 0, sent: 0, paid: 0, overdue: 0, partial: 1 });
 	expect(summary.pendingAmount).toBeNull();
 });
-
-test("order statistics stream the bounded history, preserve currencies, and flag truncation", async () => {
-	const { t, admin, siteUrl } = await setup();
-	for (let start = 0; start < 5001; start += 250) {
-		if (start === 5000) {
-			const exact = await admin.query(api.orders.getStats, { siteUrl });
-			expect(exact.stats).toMatchObject({ totalOrders: 5000, isTruncated: false });
-		}
-		await t.run(async (ctx) => {
-			for (let i = start; i < Math.min(start + 250, 5001); i++) {
-				await ctx.db.insert("orders", { siteUrl, orderNumber: `ORDER-${i}`, stripeSessionId: `session-${i}`,
-					customerEmail: "fixture@example.com", items: [], total: 100, stripePaymentCurrency: "usd",
-					status: "new", fulfillmentType: "digital" });
-			}
-		});
-	}
-	const result = await admin.query(api.orders.getStats, { siteUrl });
-	expect(result.stats).toMatchObject({ totalOrders: 5000, isTruncated: true, scanLimit: 5000 });
-	expect(result.grossPayments).toMatchObject([{ currency: "usd", orderCount: 5000, allTimeMinorUnits: 500000 }]);
-	expect(result.recentOrders).toHaveLength(10);
-	expect(result.recentOrders[0].orderNumber).toBe("ORDER-5000");
-	await expect(t.query(api.orders.getStats, { siteUrl })).rejects.toThrow();
-});

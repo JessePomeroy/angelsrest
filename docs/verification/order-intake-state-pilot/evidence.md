@@ -233,3 +233,37 @@ no model, control, probe or bound was edited. `initial_git_status` still describ
 The refresh run's checkout differed from `19bf2031` only in these two snapshot
 records, whose committed heads and scope wording were finalised after the run;
 the source hashes and tree digest are identical to the ones verified.
+
+## Source refresh review 2026-11-16
+
+The Convex debloat (#788, #789, #792) changed six pinned sources and 41 other
+files in the copied CRM tree, so `check.py` reported the correspondence and the
+tree as stale. Each file was diffed against `19bf2031`, the revision whose
+content matched its recorded hash.
+
+| Change | Source | Model impact |
+| --- | --- | --- |
+| Admin 7.0.0 pin (`package.json`, `pnpm-lock.yaml`) | #788 | None. Only the admin package changed in the lockfile; Vitest 4.1.12, convex 1.49.0, convex-test 0.0.52 and @edge-runtime/vm 5.0.0 are unchanged. |
+| Dashboard reads require maintained totals; empty-site seed added (`helpers/orderRevenue.ts`, `orders.ts`) | #789 | None. `recordOrderRevenue`, which `orders.create` calls, is unchanged. Only the dashboard read path and two error messages changed. The new `seedEmptyOrderRevenue` is called by `platform.ts` client creation, seeding, site-URL changes and renames, by `stagingSetup.bootstrap` and by the one-time `orders.seedEmptyDashboardTotals` migration, never by intake. It inserts a `ready` row only for a site with no orders and no totals, and `recordOrderRevenue` behaves the same for a `ready` row as for no row. |
+| Unused indexes dropped (`schema.ts`) | #789, #792 | None. On intake-related tables the removed indexes are `orders.by_customerEmail`, `by_lumaprintsOrderNumber`, `by_lumaprintsOrderNumber_global`, `by_lumaprintsSubmissionOrderNumber_global` and `by_siteUrl_and_printProviderAdmissionStatus`; `checkoutSnapshotReservations.by_stripeSessionId`; `checkoutSessionAdmissions.by_siteUrl_and_hostGeneration_and_admissionGeneration_and_state`; `retiredOrderSessions.by_resetId_and_stripeSessionId` and `by_siteUrl`; `commercePurposeControls.by_purpose_and_state_and_generation`; `commerceProtocolCutoffs.by_siteUrl_and_activationGeneration`; `orderResetReceipts.by_resetId`; `manualRefundRecoveries.by_recoveryId`; and `printFulfillmentJobs.by_orderId`, a table `orders.create` only inserts into through `enqueuePrintFulfillmentJob`, with no index lookup. The modeled lookups use retained indexes: `orders.by_stripeSessionId`, `retiredOrderSessions.by_stripeSessionId`, reservations `by_siteUrl_and_handleHash` and `by_accountScope_and_stripeSessionId`, admissions and refund intents `by_accountScope_and_stripeSessionId`, and `commercePurposeControls.by_siteUrl_and_purpose`. Main CI at `cfc8cf22` ([43351565482](https://github.com/JessePomeroy/angelsrest/actions/runs/43351565482)) passed `pnpm check:packages`, which type-checks every `withIndex` name against the schema. |
+| Superseded fulfillment, refund and shipment exports removed (`orders.ts`, `schema.ts`) | #792 | None. `orders.create` and the six top-level declarations it reaches in `orders.ts` (five helpers and the `STRIPE_PAYMENT_INTENT_ID` constant) are byte-identical, apart from the deleted doc comment of the removed `catalogCommerce` export that followed `consumeReservation`. |
+| Other copied-tree changes (41 further `.ts` files, 21 of them tests) | #789, #792 | None. Two are reached from `orders.create`: `commerceClosure.ts`, where `getDurablePurposeControl` and `consumeCheckoutSessionAdmission` are unchanged and only the `getProtocolCutoffForInventory` query was removed, and `helpers/limits.ts`, which only lost `AGGREGATE_SCAN_LIMIT`. The rest (`platform.ts`, `stagingSetup.ts`, `crons.ts`, the removed-function modules and their tests) are outside the modeled path. |
+| Reused `orders.test.ts`: 178 → 174 tests | #789, #792 | None. #792 removed four tests, covering the retired V1 automated-refund claim, legacy refund markers, the exact V2 return shapes and the deprecated shipment exports, and renamed four that still test historical rows. The other fulfillment, refund and notification tests were rewritten for the removed exports: they seed retired rows (and, for V5, an open `commercePurposeControls` row) or call the current replacements (`claimPrintFulfillmentV5`, `reconcilePrintFulfillmentSubmission`, `claimAutomatedFulfillmentRefundV2`) and expect those functions' outcomes. Assertions on removed functions were deleted outright: two notification tests dropped their V1 claim checks, and one parameterized test dropped its tokenized-completion sub-scenario. #789 made two statistics tests seed totals. All of this is outside `orders.create`; no `orders.create`, session-replay or numbering assertion changed. |
+
+The driver, its report test, the README and the verification skill now pin
+`orders.test.ts` at 174, so the real Convex baseline is 248 tests (233 existing,
+15 bridge probes). No model, control, probe or bound was edited.
+
+A complete rerun at the committed candidate `04d2a624` (sources from main
+`cfc8cf22`), with a clean checkout, reported `Pilot status: pass`:
+
+- Correct connected and platform configurations: each 4,196 generated / 1,206
+  distinct / zero queued.
+- Lookup-removal, split-transfer and gate-first controls: expected violations,
+  at 233/119/54, 22/17/9 and 390/185/75 (generated/distinct/queued).
+- Actual Convex baseline: 248 passed, 0 failed.
+- Both implementation mutations were caught (0 of 3 passed each), and the
+  restored run passed 15 of 15.
+
+The copied tree still has 273 files. The local evidence is in the ignored
+`test-results/order-intake-state-review-20261116/`.

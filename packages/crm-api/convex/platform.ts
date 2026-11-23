@@ -10,6 +10,7 @@ import {
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { provisionClientAdmin } from "./helpers/provisionClientAdmin";
+import { seedEmptyOrderRevenue } from "./helpers/orderRevenue";
 import { normalizePlatformClientInput, PLATFORM_CLIENT_SITE_IN_USE } from "./helpers/platformClientInput";
 import { requireClientPaymentBinding } from "./helpers/clientPaymentReadiness";
 import {
@@ -341,6 +342,7 @@ export const createClient = mutation({
 		const stored = await ctx.db.get(id);
 		if (!stored) throw new Error("Created tenant could not be read back");
 		await ensureTenantIdentity(ctx, stored, "platform_client_site_url");
+		await seedEmptyOrderRevenue(ctx, stored.siteUrl);
 		return id;
 	},
 });
@@ -470,18 +472,7 @@ export const updateClient = mutation({
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(clientId, patch);
 		}
-	},
-});
-
-/** Retired raw assignment endpoint. Old hosts must fail closed during adoption. */
-export const updateStripeConnectedAccount = mutation({
-	args: {
-		siteUrl: v.string(),
-		stripeConnectedAccountId: v.optional(v.string()),
-	},
-	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-		throw new Error("Stripe accounts must be bound through verified onboarding");
+		if (updates.siteUrl !== undefined) await seedEmptyOrderRevenue(ctx, updates.siteUrl);
 	},
 });
 
@@ -917,6 +908,7 @@ export const seedClient = internalMutation({
 		const stored = await ctx.db.get(id);
 		if (!stored) throw new Error("Seeded tenant could not be read back");
 		await ensureTenantIdentity(ctx, stored, "platform_client_site_url");
+		await seedEmptyOrderRevenue(ctx, stored.siteUrl);
 		return { created: true, id };
 	},
 });
@@ -998,17 +990,6 @@ export const listTrustedOrigins = internalQuery({
 	},
 });
 
-/** Retired CLI assignment; provider account binding requires verified onboarding. */
-export const setStripeConnectedAccount = internalMutation({
-	args: {
-		siteUrl: v.string(),
-		stripeConnectedAccountId: v.optional(v.string()),
-	},
-	handler: async () => {
-		throw new Error("Stripe accounts must be bound through verified onboarding");
-	},
-});
-
 /**
  * Ensure a `platformClients` row exists in a state that `requireSiteAdmin`
  * will accept: the stored `siteUrl` matches the bare domain the admin
@@ -1082,6 +1063,7 @@ export const ensureSiteAdmin = internalMutation({
 		}
 
 		await ctx.db.patch(row._id, patch);
+		if (patch.siteUrl !== undefined) await seedEmptyOrderRevenue(ctx, siteUrl);
 		return {
 			changed: true,
 			patch,
@@ -1156,6 +1138,7 @@ export const renameClientSiteUrl = internalMutation({
 		const { tenantId } = await ensureTenantIdentity(ctx, row, "operator");
 		await ensureTenantAliases(ctx, tenantId, row._id, toSiteUrl, "operator");
 		await ctx.db.patch(row._id, { siteUrl: toSiteUrl });
+		await seedEmptyOrderRevenue(ctx, toSiteUrl);
 		return { id: row._id, from: fromSiteUrl, to: toSiteUrl };
 	},
 });

@@ -6,10 +6,9 @@ import {
 	internalMutation,
 	internalQuery,
 	type MutationCtx,
-	query,
 	type QueryCtx,
 } from "./_generated/server";
-import { assertClientFeature, requireWebhookCallerOrAuth } from "./authHelpers";
+import { assertClientFeature } from "./authHelpers";
 import {
 	assertSafeCommerceGeneration,
 	checkedAcceptUntilMs,
@@ -669,25 +668,6 @@ export const createProtocolCutoff = internalMutation({
 			createdAt: Date.now(),
 		});
 		return { outcome: "created" as const };
-	},
-});
-
-/** Server-only authority projection for the post-horizon account-history inventory. */
-export const getProtocolCutoffForInventory = query({
-	args: { siteUrl: v.string(), webhookSecret: v.string() },
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!isCommerceTenantSite(args.siteUrl)) return null;
-		const row = await ctx.db.query("commerceProtocolCutoffs")
-			.withIndex("by_siteUrl_and_accountScope", (q) => q.eq("siteUrl", args.siteUrl))
-			.unique();
-		if (!row) return null;
-		return {
-			cutoffCreatedSeconds: row.cutoffCreatedSeconds,
-			acceptUntilMs: row.acceptUntilMs,
-			activationGeneration: row.activationGeneration,
-			accountScopeClass: row.accountScope === "platform" ? "platform" as const : "connected" as const,
-		};
 	},
 });
 

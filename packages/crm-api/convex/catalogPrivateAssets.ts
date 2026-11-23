@@ -62,7 +62,6 @@ import {
 	toEditorSafePrivatePrintSourceAsset,
 } from "./helpers/catalogPrivateAssetValidators";
 import { requireCatalogProductKindEnabled } from "./helpers/catalogProductPolicy";
-import { catalogProductKindValidator } from "./helpers/catalogProductValidators";
 
 function editorAdmissionResult(
 	result: Awaited<ReturnType<typeof recordCatalogPrivateStorageReceiptSet>>,
@@ -1525,45 +1524,6 @@ export const getEditorJournalStatus = internalQuery({
 			...(retryAt === undefined ? {} : { retryAt: new Date(retryAt).toISOString() }),
 			...(verifiedAsset === undefined ? {} : { asset: verifiedAsset }),
 		};
-	},
-});
-
-/** Resolve one verified editor operation to metadata that is already safe for the Editor. */
-export const resolveEditorUpload = query({
-	args: {
-		siteUrl: v.string(),
-		operationId: v.string(),
-		productKind: catalogProductKindValidator,
-	},
-	handler: async (ctx, { siteUrl, operationId, productKind }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
-		requireCatalogProductKindEnabled(client, productKind);
-		const expectedKind =
-			productKind === "print" || productKind === "print_set"
-				? "print_source"
-				: productKind === "digital_download"
-					? "paid_digital_file"
-					: null;
-		if (!expectedKind) {
-			throw new Error("Catalog product kind does not support private upload resolution");
-		}
-		if (!CATALOG_PRIVATE_EDITOR_OPERATION_ID_PATTERN.test(operationId)) {
-			throw new Error("Private catalog editor upload is not verified");
-		}
-		const binding = await ctx.db
-			.query("catalogPrivateAssetEditorOperations")
-			.withIndex("by_siteUrl_and_operationId", (q) =>
-				q.eq("siteUrl", siteUrl).eq("operationId", operationId),
-			)
-			.unique();
-		if (
-			!binding
-			|| binding.sourceId !== `editor-upload:${operationId}`
-			|| binding.assetKey !== `editor-upload-${operationId}`
-			|| binding.kind !== expectedKind
-			|| (binding.journalVersion === 1 && binding.productKind !== productKind)
-		) throw new Error("Private catalog editor upload is not verified");
-		return await resolveVerifiedEditorBinding(ctx, binding);
 	},
 });
 

@@ -61,15 +61,12 @@ vi.mock("$convex/api", () => ({
 			isPrintFulfillmentReconciliationAlertDeliveryUncertain:
 				"orders.isPrintFulfillmentReconciliationAlertDeliveryUncertain",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
-			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
-			claimPrintFulfillmentV4: "orders.claimPrintFulfillmentV4",
 			claimPrintFulfillmentV5: "orders.claimPrintFulfillmentV5",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
 			completeFulfillmentFailureNotificationV2: "orders.completeFulfillmentFailureNotificationV2",
 			recordAutomatedFulfillmentRefund: "orders.recordAutomatedFulfillmentRefund",
 			recordPrintFulfillmentReconciliationPending:
 				"orders.recordPrintFulfillmentReconciliationPending",
-			completePrintFulfillmentSubmission: "orders.completePrintFulfillmentSubmission",
 			recordPrintFulfillmentSubmissionReceipt: "orders.recordPrintFulfillmentSubmissionReceipt",
 			reconcilePrintFulfillmentSubmission: "orders.reconcilePrintFulfillmentSubmission",
 			rejectPrintFulfillmentSubmission: "orders.rejectPrintFulfillmentSubmission",
@@ -200,11 +197,7 @@ describe("print fulfillment", () => {
 			if (reference === "orders.rejectPrintFulfillmentSubmission") {
 				return { kind: "refund_pending" };
 			}
-			if (
-				reference === "orders.completePrintFulfillmentSubmission" ||
-				reference === "orders.reconcilePrintFulfillmentSubmission"
-			)
-				return { kind: "fulfilled" };
+			if (reference === "orders.reconcilePrintFulfillmentSubmission") return { kind: "fulfilled" };
 			if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
 		});
 		stripe.refunds.create.mockResolvedValue({

@@ -3,12 +3,11 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import {
 	internalMutation,
-	internalQuery,
 	type MutationCtx,
 	mutation,
 	query,
 } from "./_generated/server";
-import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
+import { requireSiteAdmin } from "./authHelpers";
 import { requireBlogAssetUnused } from "./helpers/blogContentData";
 import { getActiveSingletonRevisions } from "./helpers/contentStore";
 import {
@@ -28,57 +27,6 @@ import { POST_CONTENT_LIMITS } from "./helpers/postContentValidators";
 
 const MEDIA_LIBRARY_PAGE_MAX = 100;
 const MEDIA_BATCH_MAX = 500;
-const IMPORT_TARGET_BATCH_MAX = 21;
-const IMPORT_TARGET_DERIVATIVE_FILENAMES = {
-	thumb: "thumb.webp",
-	card: "card.webp",
-	display1280: "display-1280.webp",
-	display2048: "display-2048.webp",
-	display2560: "display-2560.webp",
-} as const;
-
-type ImportTargetDerivativeName = keyof typeof IMPORT_TARGET_DERIVATIVE_FILENAMES;
-
-function projectImportTargetDerivative(
-	asset: Doc<"mediaAssets">,
-	name: ImportTargetDerivativeName,
-	prefix: string,
-) {
-	const derivative = asset.derivatives[name];
-	return {
-		identityMatches:
-			derivative.key === `${prefix}${IMPORT_TARGET_DERIVATIVE_FILENAMES[name]}`,
-		contentType: derivative.contentType,
-		width: derivative.width,
-		height: derivative.height,
-	};
-}
-
-function projectImportTarget(asset: Doc<"mediaAssets">) {
-	const prefix = `sites/${asset.siteUrl}/web/${asset.assetId}/`;
-	return {
-		mediaAssetId: asset._id,
-		workerAssetId: asset.assetId,
-		siteUrl: asset.siteUrl,
-		intent: asset.intent,
-		status: asset.status,
-		source: {
-			contentType: asset.source.contentType,
-			sizeBytes: asset.source.sizeBytes,
-			width: asset.source.width,
-			height: asset.source.height,
-			...(asset.source.sha256 === undefined ? {} : { sha256: asset.source.sha256 }),
-		},
-		masterIdentityMatches: asset.master.key === `${prefix}master.webp`,
-		derivatives: {
-			thumb: projectImportTargetDerivative(asset, "thumb", prefix),
-			card: projectImportTargetDerivative(asset, "card", prefix),
-			display1280: projectImportTargetDerivative(asset, "display1280", prefix),
-			display2048: projectImportTargetDerivative(asset, "display2048", prefix),
-			display2560: projectImportTargetDerivative(asset, "display2560", prefix),
-		},
-	};
-}
 
 function projectEditorAsset(asset: {
 	_id: string;
@@ -284,33 +232,6 @@ export const registerReadyWebAsset = mutation({
 	},
 });
 
-export const get = query({
-	args: { id: v.id("mediaAssets") },
-	handler: async (ctx, { id }) => {
-		return await requireDocumentSiteAdmin(ctx, "mediaAssets", id, "editor");
-	},
-});
-
-export const listBySite = query({
-	args: {
-		siteUrl: v.string(),
-		paginationOpts: paginationOptsValidator,
-	},
-	handler: async (ctx, { siteUrl, paginationOpts }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
-		if (
-			!Number.isSafeInteger(paginationOpts.numItems)
-			|| paginationOpts.numItems < 1
-			|| paginationOpts.numItems > MEDIA_LIBRARY_PAGE_MAX
-		) throw new Error(`Media library pages cannot exceed ${MEDIA_LIBRARY_PAGE_MAX} items`);
-		return await ctx.db
-			.query("mediaAssets")
-			.withIndex("by_siteUrl_and_createdAt", (q) => q.eq("siteUrl", client.siteUrl))
-			.order("desc")
-			.paginate(paginationOpts);
-	},
-});
-
 export const listForEditor = query({
 	args: {
 		siteUrl: v.string(),
@@ -348,36 +269,6 @@ export const getManyForEditor = query({
 				throw new Error("Media asset not found");
 			}
 			return projectEditorAsset(asset);
-		});
-	},
-});
-
-export const verifyImportTargets = internalQuery({
-	args: {
-		expectedSiteUrl: v.string(),
-		ids: v.array(v.id("mediaAssets")),
-	},
-	handler: async (ctx, { expectedSiteUrl, ids }) => {
-		if (
-			expectedSiteUrl.length === 0
-			|| expectedSiteUrl !== expectedSiteUrl.trim()
-		) throw new Error("Expected import target site URL is invalid");
-		if (ids.length > IMPORT_TARGET_BATCH_MAX) {
-			throw new Error(
-				`Import target verification cannot exceed ${IMPORT_TARGET_BATCH_MAX} assets`,
-			);
-		}
-		if (new Set(ids).size !== ids.length) {
-			throw new Error("Import target verification requires unique assets");
-		}
-
-		const assets = await Promise.all(ids.map((id) => ctx.db.get(id)));
-		return assets.map((asset) => {
-			if (!asset) throw new Error("Media import target not found");
-			if (asset.siteUrl !== expectedSiteUrl) {
-				throw new Error("Media import target does not belong to expected site");
-			}
-			return projectImportTarget(asset);
 		});
 	},
 });

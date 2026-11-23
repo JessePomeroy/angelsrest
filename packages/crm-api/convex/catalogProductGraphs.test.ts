@@ -553,120 +553,34 @@ describe("dormant private catalog product graph V2", () => {
 		expect(resumed.revisionId).not.toBe(created.revisionId);
 	});
 
-	test("reports retained graph references as ineligible until unused product removal", async () => {
+	test("retains discarded graph rows and their private file references", async () => {
 		const fixture = await setup(modules);
-		const draft = graphDraft("print", fixture, "retired-print");
-		const created = await createGraph(fixture.adminA, SITE_A.siteUrl, "retired-print", draft);
-
-		const active = await fixture.adminA.query(
-			api.catalogProductGraphs.getRetirementEligibility,
-			{ productId: created.productId },
+		const print = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"retired-print",
+			graphDraft("print", fixture, "retired-print"),
 		);
-		expect(active).toMatchObject({
-			productId: created.productId,
-			productKey: "retired-print",
-			productKind: "print",
-			graphVersion: 2,
-			retired: false,
-			activeRevisionIds: [created.revisionId],
-			retainedRevisionIds: [],
-			revisionCount: 1,
-			databaseRowsWillBeDeleted: false,
-			externalObjectsWillBeDeleted: false,
-		});
-		expect(active.webMedia).toHaveLength(2);
-		expect(active.webMedia.every((asset) => !asset.eligibleForExternalCleanup)).toBe(true);
-		expect(active.printSources).toEqual([expect.objectContaining({
-			assetId: fixture.printA,
-			assetKind: "printSource",
-			referenceCount: 1,
-			activeReferenceCount: 1,
-			retainedReferenceCount: 0,
-			eligibleForExternalCleanup: false,
-			externalObjectsWillBeDeleted: false,
-		})]);
-
-		await fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
-			productId: created.productId,
-			draftRevisionId: created.revisionId,
-		});
-
-		const retired = await fixture.adminA.query(
-			api.catalogProductGraphs.getRetirementEligibility,
-			{ productId: created.productId },
-		);
-		expect(retired).toMatchObject({
-			productId: created.productId,
-			retired: true,
-			activeRevisionIds: [],
-			retainedRevisionIds: [created.revisionId],
-			revisionCount: 1,
-			databaseRowsWillBeDeleted: false,
-			externalObjectsWillBeDeleted: false,
-		});
-		expect(retired.webMedia.every((asset) =>
-			asset.activeReferenceCount === 0
-			&& asset.retainedReferenceCount >= 1
-			&& !asset.eligibleForExternalCleanup
-			&& !asset.externalObjectsWillBeDeleted
-		)).toBe(true);
-		expect(retired.printSources).toEqual([expect.objectContaining({
-			assetId: fixture.printA,
-			referenceCount: 1,
-			activeReferenceCount: 0,
-			retainedReferenceCount: 1,
-			eligibleForExternalCleanup: false,
-			externalObjectsWillBeDeleted: false,
-		})]);
-		expect(await graphRows(fixture, created.revisionId)).toMatchObject({
-			revision: { _id: created.revisionId },
-			printSources: [expect.objectContaining({ assetId: fixture.printA })],
-		});
-	});
-
-	test("retains both shared web media and historical private files", async () => {
-		const fixture = await setup(modules);
-		const downloadDraft = graphDraft("digital_download", fixture, "retired-download");
 		const download = await createGraph(
 			fixture.adminA,
 			SITE_A.siteUrl,
 			"retired-download",
-			downloadDraft,
+			graphDraft("digital_download", fixture, "retired-download"),
 		);
-		await createGraph(
-			fixture.adminA,
-			SITE_A.siteUrl,
-			"active-postcard",
-			graphDraft("postcard", fixture, "active-postcard"),
-		);
-		await fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
-			productId: download.productId,
-			draftRevisionId: download.revisionId,
+		for (const created of [print, download]) {
+			await fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
+				productId: created.productId,
+				draftRevisionId: created.revisionId,
+			});
+		}
+		expect(await graphRows(fixture, print.revisionId)).toMatchObject({
+			revision: { _id: print.revisionId },
+			printSources: [expect.objectContaining({ assetId: fixture.printA })],
 		});
-
-		const retired = await fixture.adminA.query(
-			api.catalogProductGraphs.getRetirementEligibility,
-			{ productId: download.productId },
-		);
-		expect(retired.retired).toBe(true);
-		expect(retired.webMedia).toEqual([expect.objectContaining({
-			assetId: fixture.webA,
-			assetKind: "webMedia",
-			referenceCount: 2,
-			activeReferenceCount: 1,
-			retainedReferenceCount: 1,
-			eligibleForExternalCleanup: false,
-			externalObjectsWillBeDeleted: false,
-		})]);
-		expect(retired.digitalFiles).toEqual([expect.objectContaining({
-			assetId: fixture.paidA,
-			assetKind: "digitalFile",
-			referenceCount: 1,
-			activeReferenceCount: 0,
-			retainedReferenceCount: 1,
-			eligibleForExternalCleanup: false,
-			externalObjectsWillBeDeleted: false,
-		})]);
+		expect(await graphRows(fixture, download.revisionId)).toMatchObject({
+			revision: { _id: download.revisionId },
+			digitalFiles: [expect.objectContaining({ assetId: fixture.paidA })],
+		});
 	});
 
 	test("keeps V1 and V2 APIs, indexes, and revision contracts isolated", async () => {
@@ -685,7 +599,6 @@ describe("dormant private catalog product graph V2", () => {
 			"getDraftPreview",
 			"getEditorState",
 			"getPublishedBySlug",
-			"getRetirementEligibility",
 			"listDraftPrivateAssetCandidates",
 			"listForEditor",
 			"listPublished",

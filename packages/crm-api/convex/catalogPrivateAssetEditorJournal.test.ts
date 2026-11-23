@@ -1110,26 +1110,6 @@ describe("catalog editor durable journal HTTP roles", () => {
 		expect(await status.json()).toMatchObject({ status: "expired" });
 	});
 
-	test("keeps journal product-kind resolution exact after verification", async () => {
-		const t = convexTest(schema, modules);
-		await seedClients(t);
-		const begun = await begin(t);
-		const receipts = await receiptsFor(begun.operationId);
-		await postReceipt(t, EDITOR_STORAGE_PATH, STORAGE_SECRET, receipts.storage);
-		await postReceipt(t, EDITOR_INSPECTION_PATH, INSPECTION_RECEIPT_SECRET, receipts.inspection);
-		const admin = t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL, emailVerified: true });
-		await expect(admin.query(api.catalogPrivateAssets.resolveEditorUpload, {
-			siteUrl: SITE,
-			operationId: begun.operationId,
-			productKind: "print_set",
-		})).rejects.toThrow(/not verified/i);
-		await expect(admin.query(api.catalogPrivateAssets.resolveEditorUpload, {
-			siteUrl: SITE,
-			operationId: begun.operationId,
-			productKind: "print",
-		})).resolves.toMatchObject({ kind: "print_source" });
-	});
-
 	test("rolls back declaration-mismatched receipts without partial authority writes", async () => {
 		const t = convexTest(schema, modules);
 		await seedClients(t);
@@ -1794,20 +1774,8 @@ describe("registered tenant upload reservations", () => {
 			lifecycle: "verified",
 			privateObjectKey: `sites/${SITE}/catalog/print-sources/editor-upload-${begun.operationId}/original`,
 		});
-		const admin = t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL, emailVerified: true });
-		await expect(
-			admin.query(api.catalogPrivateAssets.resolveEditorUpload, {
-				siteUrl: SITE,
-				operationId: begun.operationId,
-				productKind: "print",
-			}),
-		).resolves.toMatchObject({ kind: "print_source" });
-		await expect(
-			admin.query(api.catalogPrivateAssets.resolveEditorUpload, {
-				siteUrl: "custom.example",
-				operationId: begun.operationId,
-				productKind: "print",
-			}),
-		).rejects.toThrow();
+		const printSources = await t.run(async (ctx) => await ctx.db.query("catalogPrintSourceAssets").take(2));
+		expect(printSources).toHaveLength(1);
+		expect(printSources[0]).toMatchObject({ siteUrl: SITE, status: "verified" });
 	});
 });

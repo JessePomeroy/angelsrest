@@ -55,7 +55,7 @@ Exit 0 and `summary.json` status `pass` require all of these:
   lookup permits two orders; splitting delete/insert permits a lost reservation.
 - Moving the gate before existing-order recovery violates `CommittedReplayAvailable`;
   uniqueness alone cannot catch this deliberately broken ordering.
-- The real Convex baseline passes 252 tests (237 existing, 15 bridge probes).
+- The real Convex baseline passes 248 tests (233 existing, 15 bridge probes).
 - Removing the actual session lookup in a disposable `orders.ts` copy causes
   exactly three duplicate-row assertion failures. Moving only the producer gate
   causes three expected closed-gate errors, one per scope; each control skips
@@ -80,7 +80,8 @@ and supplier/email/refund effects. No exactly-once external fulfillment claim.
 ## Source synchronization
 
 Reviewed HEAD: `187ca087f859999a7f0b5c82779f39bc89b6e28b`, refreshed after review
-at `19bf2031becc0ea4f09f73f696ffaf6516e456bd` (2026-11-11).
+at `19bf2031becc0ea4f09f73f696ffaf6516e456bd` (2026-11-11) and
+`cfc8cf22ab28eb9fc8a7b46f23dbce75f505506e` (2026-11-16).
 The [source snapshot](../../../docs/verification/order-intake-state-pilot/source-snapshot.json)
 records per-file SHA-256 hashes of the covered sources and a hash of the copied
 CRM execution tree. HEAD alone cannot identify a dirty source snapshot.

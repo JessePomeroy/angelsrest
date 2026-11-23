@@ -1,6 +1,7 @@
 import type { Id } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
 import { checksumContentPayload } from "./helpers/contentStore";
+import { seedEmptyOrderRevenue } from "./helpers/orderRevenue";
 import { provisionClientAdmin } from "./helpers/provisionClientAdmin";
 import { ensureTenantIdentity } from "./helpers/tenantContext";
 
@@ -41,6 +42,7 @@ export const bootstrap = internalMutation({
 		const client = await ctx.db.get(clientId);
 		if (!client) throw new Error("Staging creator was not stored");
 		await ensureTenantIdentity(ctx, client, "operator");
+		await seedEmptyOrderRevenue(ctx, siteUrl);
 		return { created: true, clientId, email };
 	},
 });

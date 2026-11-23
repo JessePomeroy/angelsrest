@@ -124,19 +124,6 @@ function generateId(): string {
 
 // Queries
 
-export const getBoardConfig = query({
-	args: { siteUrl: v.string(), projectType: v.string() },
-	handler: async (ctx, { siteUrl, projectType }) => {
-		await requireSiteAdmin(ctx, siteUrl, "board");
-		return await ctx.db
-			.query("boardConfigs")
-			.withIndex("by_siteUrl_and_projectType", (q) =>
-				q.eq("siteUrl", siteUrl).eq("projectType", projectType),
-			)
-			.first();
-	},
-});
-
 export const listBoardConfigs = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
@@ -376,31 +363,5 @@ export const deleteColumn = mutation({
 		}));
 
 		await ctx.db.patch(configId, { columns: updatedColumns });
-	},
-});
-
-export const reorderColumns = mutation({
-	args: {
-		configId: v.id("boardConfigs"),
-		siteUrl: v.string(),
-		columnIds: v.array(v.string()),
-	},
-	handler: async (ctx, { configId, siteUrl, columnIds }) => {
-		await requireSiteAdmin(ctx, siteUrl, "board");
-		const config = await ctx.db.get(configId);
-		if (!config || config.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-
-		const columnMap = new Map(config.columns.map((c) => [c.id, c]));
-		const reordered = columnIds
-			.map((id, i) => {
-				const col = columnMap.get(id);
-				if (!col) return null;
-				return { ...col, position: i };
-			})
-			.filter((c): c is NonNullable<typeof c> => c !== null);
-
-		await ctx.db.patch(configId, { columns: reordered });
 	},
 });

@@ -327,7 +327,7 @@ describe("verified Stripe account binding", () => {
 		expect((await s.begin()).stripeConnectedAccountId).toBeNull();
 	});
 
-	test("generic client writes and retired assignment endpoints cannot bypass verification", async () => {
+	test("generic client writes cannot bypass verification", async () => {
 		const s = await setup();
 		await expect(
 			s.admin.mutation(api.platform.createClient, {
@@ -342,20 +342,8 @@ describe("verified Stripe account binding", () => {
 			}),
 		).rejects.toThrow("verified onboarding");
 		await expect(
-			s.admin.mutation(api.platform.updateStripeConnectedAccount, {
-				siteUrl: "client.example",
-				stripeConnectedAccountId: ACCOUNT,
-			}),
-		).rejects.toThrow("verified onboarding");
-		await expect(
 			s.t.mutation(internal.platform.seedClient, {
 				...input("unverified.example"),
-				stripeConnectedAccountId: ACCOUNT,
-			}),
-		).rejects.toThrow("verified onboarding");
-		await expect(
-			s.t.mutation(internal.platform.setStripeConnectedAccount, {
-				siteUrl: "client.example",
 				stripeConnectedAccountId: ACCOUNT,
 			}),
 		).rejects.toThrow("verified onboarding");

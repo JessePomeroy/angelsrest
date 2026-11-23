@@ -50,8 +50,11 @@ remain flagged. Compatibility fields are not suitable for financial reporting.
 The resumable backfill copies 100 orders per batch, independently verifies source
 contributions, and compares stored bucket amounts/counts before marking the site
 ready. Retries do not double-count. New orders arriving during verification also
-update its comparison totals. Until readiness, the existing bounded 5,001-row
-scan remains active; a failed comparison cannot activate the aggregates.
+update its comparison totals. A failed comparison cannot activate the aggregates.
+Since 2026-11-11 there is no scan fallback: until a site is ready, its dashboard
+order report is explicitly unavailable. New sites without orders start ready;
+see [dashboard revenue totals](runbooks/dashboard-revenue-totals.md) for the
+empty-site migration.
 
 This adds storage and transactional writes in exchange for bounded dashboard
 reads. Orders remain the source records. Supported code has one order-creation

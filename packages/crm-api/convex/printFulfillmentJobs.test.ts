@@ -261,14 +261,10 @@ test("job reconciliation waits after receipt and remains pending beyond five GET
 	expect((await t.run((ctx) => ctx.db.get(orderId)))?.printFulfillmentResolution).toBe("submission_uncertain");
 });
 
-test("old hosts cannot claim job orders and an expired job lease cannot cross the POST fence", async () => {
+test("a claim without the job lease is busy and an expired job lease cannot cross the POST fence", async () => {
 	const { t, jobId, orderId, claim } = await setup();
 	const claimArgs = { orderId, claimToken: "123e4567-e89b-42d3-a456-426614174000", webhookSecret: secret };
 	expect(await t.mutation(api.orders.claimPrintFulfillmentV5, claimArgs)).toEqual({ kind: "busy" });
-	for (const method of [api.orders.claimPrintFulfillmentV2, api.orders.claimPrintFulfillmentV3]) {
-		expect(await t.mutation(method, claimArgs)).toEqual({ kind: "busy" });
-	}
-	expect(await t.mutation(api.orders.claimPrintFulfillment, { orderId, webhookSecret: secret })).toEqual({ kind: "busy" });
 	await t.run(async (ctx) => {
 		await ctx.db.patch(jobId, { stage: "finish" });
 		await ctx.db.insert("commercePurposeControls", { siteUrl, purpose: "new_provider_submission", state: "open", generation: 1, createdAt: Date.now(), updatedAt: Date.now() });

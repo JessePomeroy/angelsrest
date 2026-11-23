@@ -66,15 +66,12 @@ vi.mock("$convex/api", () => ({
 			prepareOrderReceipt: "orders.prepareOrderReceipt",
 			claimPaymentFailureEmail: "orders.claimPaymentFailureEmail",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
-			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
-			claimPrintFulfillmentV4: "orders.claimPrintFulfillmentV4",
 			claimPrintFulfillmentV5: "orders.claimPrintFulfillmentV5",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
 			completeFulfillmentFailureNotificationV2: "orders.completeFulfillmentFailureNotificationV2",
 			recordAutomatedFulfillmentRefund: "orders.recordAutomatedFulfillmentRefund",
 			completePrintFulfillmentReconciliationAlert:
 				"orders.completePrintFulfillmentReconciliationAlert",
-			completePrintFulfillmentSubmission: "orders.completePrintFulfillmentSubmission",
 			recordPrintFulfillmentSubmissionReceipt: "orders.recordPrintFulfillmentSubmissionReceipt",
 			create: "orders.create",
 			reconcilePrintFulfillmentSubmission: "orders.reconcilePrintFulfillmentSubmission",
@@ -385,10 +382,7 @@ describe("processStripeWebhookEvent", () => {
 				if (reference === "orders.rejectPrintFulfillmentSubmission") {
 					return { kind: "refund_pending" };
 				}
-				if (
-					reference === "orders.completePrintFulfillmentSubmission" ||
-					reference === "orders.reconcilePrintFulfillmentSubmission"
-				)
+				if (reference === "orders.reconcilePrintFulfillmentSubmission")
 					return printCompletionResultOverride ?? { kind: "fulfilled" };
 				if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
 				if (reference === "orders.updateStatus") {
@@ -684,10 +678,6 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.reconcilePrintFulfillmentSubmission",
 			expect.objectContaining({ lumaprintsOrderNumber: "123" }),
-		);
-		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.completePrintFulfillmentSubmission",
-			expect.anything(),
 		);
 	});
 

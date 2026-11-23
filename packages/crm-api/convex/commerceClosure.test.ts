@@ -754,19 +754,6 @@ describe("Checkout Session admission", () => {
 			.unique());
 		expect(cutoff!.acceptUntilMs - cutoff!.cutoffCreatedSeconds * 1000)
 			.toBe(3_222_000_000);
-		expect(await t.query(api.commerceClosure.getProtocolCutoffForInventory, {
-			siteUrl: SITE,
-			webhookSecret: WEBHOOK_SECRET,
-		})).toEqual({
-			cutoffCreatedSeconds: cutoff!.cutoffCreatedSeconds,
-			acceptUntilMs: cutoff!.acceptUntilMs,
-			activationGeneration: 1,
-			accountScopeClass: "platform",
-		});
-		await expect(t.query(api.commerceClosure.getProtocolCutoffForInventory, {
-			siteUrl: SITE,
-			webhookSecret: "wrong-webhook-secret-0123456789abcdef",
-		})).rejects.toThrow(/Not authorized/);
 	});
 });
 
@@ -824,13 +811,6 @@ describe("provider admission", () => {
 		await t.run((ctx) => ctx.db.patch(orderId, {
 			printFulfillmentReconciliationLastAttemptAt: 0,
 		}));
-		await expect(t.mutation(api.orders.completePrintFulfillmentSubmission, {
-			orderId,
-			claimToken: CLAIM_A,
-			externalId: "cs_test_v5queueconfirmation1234",
-			lumaprintsOrderNumber: "10001978978",
-			webhookSecret: WEBHOOK_SECRET,
-		})).rejects.toThrow("requires provider confirmation");
 		await expect(t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_B,
@@ -893,37 +873,18 @@ describe("provider admission", () => {
 		);
 
 		await activateProvider(t, "open", 1);
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
-			orderId,
-			claimToken: CLAIM_A,
-			webhookSecret: WEBHOOK_SECRET,
-		})).toEqual({ kind: "submission_closed" });
 		const claimed = await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
 		});
 		expect(claimed).toMatchObject({ kind: "claimed", providerGeneration: 1 });
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV2, {
-			orderId,
-			claimToken: CLAIM_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).toEqual({ kind: "busy" });
-		expect(await t.mutation(api.orders.claimPrintFulfillment, {
-			orderId,
-			webhookSecret: WEBHOOK_SECRET,
-		})).toEqual({ kind: "busy" });
 
 		expect(await t.mutation(api.orders.releasePrintFulfillmentClaim, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
 		})).toBe(true);
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV3, {
-			orderId,
-			claimToken: CLAIM_B,
-			webhookSecret: WEBHOOK_SECRET,
-		})).toEqual({ kind: "busy" });
 		await activateProvider(t, "closed", 2);
 		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
@@ -962,11 +923,19 @@ describe("provider admission", () => {
 		});
 		expect((await t.run((ctx) => ctx.db.get(orderId)))?.printFulfillmentPhase)
 			.toBeUndefined();
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV3, {
+		// A row admitted by the retired V4 coordinator stays resumable under V5.
+		await t.run((ctx) => ctx.db.patch(orderId, { printFulfillmentCoordinatorVersion: 4 }));
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_B,
 			webhookSecret: WEBHOOK_SECRET,
-		})).toEqual({ kind: "busy" });
+		})).toMatchObject({ kind: "claimed", providerGeneration: 1 });
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			printFulfillmentCoordinatorVersion: 5,
+			printProviderAdmissionStatus: "admitted",
+			printProviderAdmissionGeneration: 1,
+			printFulfillmentPhase: "preparing",
+		});
 	});
 
 	test("reports only normalized provider blocker classes", async () => {

@@ -2,10 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
 	getBlogEditorState,
-	getPublishedBlogBySlug,
 	listBlogEditorDocuments,
-	listPublishedBlogDocuments,
-	resolvePublishedBlogSlug,
 } from "./helpers/blogContentQueries";
 import {
 	archiveBlogDocument,
@@ -95,34 +92,4 @@ export const listForEditor = query({
 	},
 	handler: async (ctx, { siteUrl, kind }) =>
 		await listBlogEditorDocuments(ctx, siteUrl, kind),
-});
-
-/** Public-safe exact slug read; drafts and private media fields are absent. */
-export const getPublishedBySlug = query({
-	args: {
-		siteUrl: v.string(),
-		kind: blogSupportingKindValidator,
-		slug: v.string(),
-	},
-	handler: async (ctx, args) => await getPublishedBlogBySlug(ctx, args),
-});
-
-/** Public-safe current-or-retained slug resolution for host-owned HTTP routing. */
-export const resolvePublishedSlug = query({
-	args: {
-		siteUrl: v.string(),
-		kind: blogSupportingKindValidator,
-		slug: v.string(),
-	},
-	handler: async (ctx, args) => await resolvePublishedBlogSlug(ctx, args),
-});
-
-/** Bounded public supporting-content projection in server-assigned rank order. */
-export const listPublished = query({
-	args: {
-		siteUrl: v.string(),
-		kind: blogSupportingKindValidator,
-	},
-	handler: async (ctx, { siteUrl, kind }) =>
-		await listPublishedBlogDocuments(ctx, siteUrl, kind),
 });

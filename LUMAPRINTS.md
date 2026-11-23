@@ -167,9 +167,10 @@ retain their progressing descriptor and token-upload protocol.
 The direct upload performs one dedicated authenticated PUT with no automatic
 fallback; timeout/retry uses the same content-addressed key and immutable replay.
 Both transports are exercised by `pnpm test:print-contract` against real Worker
-handlers pinned at `fb0974b5e54f83349d52e04690323f42ff9f6d4f`, with only R2/runtime
-substituted and no network fallback. Locally place that Worker revision at
-`.contract/gallery-worker`; CI fetches it with the existing private-repo credential.
+handlers pinned by `RELEASE_WORKER_REVISION` in `.github/workflows/ci.yml`, with
+only R2/runtime substituted and no network fallback. Locally place that Worker
+revision at `.contract/gallery-worker`; CI fetches it with the existing
+private-repo credential.
 
 Rollback: disable new capture first, but keep the frozen consumer, additive
 Convex schema and Worker route until all frozen reservations/jobs are drained.
@@ -531,16 +532,19 @@ LumaPrints acceptance. The Worker retains its own route/runtime tests.
 
 CI checks out the reviewed Worker revision pinned in `.github/workflows/ci.yml`
 under ignored `.contract/gallery-worker`, using the existing read-only
-cross-repository token. Locally, create that same source-only checkout:
+cross-repository token. Locally, create the same checkout:
 
 ```bash
+rev=$(sed -n 's/^ *RELEASE_WORKER_REVISION: *//p' .github/workflows/ci.yml)
 git clone --no-checkout https://github.com/JessePomeroy/gallery-worker.git .contract/gallery-worker
-git -C .contract/gallery-worker checkout --detach fb0974b5e54f83349d52e04690323f42ff9f6d4f
+git -C .contract/gallery-worker checkout --detach "$rev"
+npm ci --prefix .contract/gallery-worker --ignore-scripts
 pnpm test:print-contract
 ```
 
-Do not install Worker dependencies or copy secrets for this test. Update the CI
-pin and these instructions together when adopting a new Worker interface.
+Install Worker dependencies only as CI does, with `--ignore-scripts`, and never
+copy secrets for this test. Bump the CI pin when adopting a new Worker interface
+or after deploying a new Worker source.
 Missing access/source is a failed check, never a skipped proof.
 
 Before runtime activation, separately verify the deployed host/Worker revisions,

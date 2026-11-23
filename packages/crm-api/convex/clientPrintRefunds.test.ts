@@ -135,7 +135,6 @@ describe("guided client print refund operations", () => {
 		const s = await setup(); await s.request();
 		expect(await s.t.mutation(api.orders.claimPrintFulfillmentV5, { orderId: s.orderId, tenantId: TENANT, claimToken: TOKEN, webhookSecret: SECRET })).toEqual({ kind: "busy" });
 		expect(await s.t.mutation(api.orders.beginPrintFulfillmentSubmission, { orderId: s.orderId, tenantId: TENANT, claimToken: TOKEN, webhookSecret: SECRET })).toEqual({ kind: "lost" });
-		expect(await s.t.mutation(api.orders.claimPrintFulfillmentV2, { orderId: s.orderId, claimToken: TOKEN, webhookSecret: SECRET })).toEqual({ kind: "busy" });
 		expect(await s.t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, { orderId: s.orderId, claimToken: TOKEN, fulfillmentError: "Supplier rejected", webhookSecret: SECRET })).toEqual({ kind: "unavailable", guidedRefund: true });
 	});
 	test("does not take over an in-flight supplier submission or automated refund", async () => {

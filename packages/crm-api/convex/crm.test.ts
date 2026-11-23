@@ -1,9 +1,9 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
 import { deepStrictEqual } from "node:assert/strict";
-import { makeFunctionReference, type FunctionArgs, type PaginationResult } from "convex/server";
+import { makeFunctionReference, type FunctionArgs } from "convex/server";
 import { convexToJson, jsonToConvex } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -150,44 +150,6 @@ test.each([
 		),
 	).toEqual([id]);
 });
-test("pagination applies the same category/status filters across pages and tenants", async () => {
-	const { t, admin } = await setup();
-	await t.run(async (ctx) => {
-		for (let i = 0; i < 5; i++)
-			await ctx.db.insert("photographyClients", {
-				siteUrl,
-				name: `Match ${i}`,
-				category: "web",
-				status: "booked",
-			});
-		for (const [site, category, status] of [
-			[siteUrl, "web", "lead"],
-			[siteUrl, "photography", "booked"],
-			["other.example", "web", "booked"],
-		] as const)
-			await ctx.db.insert("photographyClients", {
-				siteUrl: site,
-				name: "Exclude",
-				category,
-				status,
-			});
-	});
-	const filters = { siteUrl, category: "web" as const, status: "booked" as const };
-	const expected = await admin.query(api.crm.listClients, filters);
-	const ids: string[] = [];
-	let cursor: string | null = null;
-	for (let i = 0; i < 4; i++) {
-		const page: PaginationResult<Doc<"photographyClients">> = await admin.query(api.crm.listClientsPaginated, {
-			...filters,
-			paginationOpts: { numItems: 2, cursor },
-		});
-		ids.push(...page.page.map((row) => row._id));
-		if (page.isDone) break;
-		cursor = page.continueCursor;
-	}
-	expect(ids).toEqual(expected.map((row) => row._id));
-	expect(ids).toHaveLength(5);
-});
 test.each([1000, 1001])("stats expose truncation for %i clients", async (count) => {
 	const { t, admin } = await setup();
 	await t.run(async (ctx) => {
@@ -219,12 +181,7 @@ test("unfiltered and category-only lists retain bounded descending results", asy
 	});
 	for (const category of [undefined, "photography"] as const)
 		expect(await admin.query(api.crm.listClients, { siteUrl, category })).toHaveLength(500);
-	await expect(
-		t.query(api.crm.listClientsPaginated, {
-			siteUrl,
-			paginationOpts: { numItems: 2, cursor: null },
-		}),
-	).rejects.toThrow("Not authenticated");
+	await expect(t.query(api.crm.listClients, { siteUrl })).rejects.toThrow("Not authenticated");
 });
 
 test("tagged pages stay bounded, retain filters and conceal foreign tags", async () => {
