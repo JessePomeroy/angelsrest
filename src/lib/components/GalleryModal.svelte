@@ -1,4 +1,5 @@
 <script lang="ts">
+import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "@lucide/svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
 import { openModal } from "$lib/utils/openModal";
 
@@ -46,7 +47,7 @@ function getImageUrl(img: GalleryImage | undefined) {
 
 function imageSizes(image: GalleryImage | undefined) {
 	return image?.fullWidth && image.fullHeight
-		? `min(90vw, ${90 * image.fullWidth / image.fullHeight}vh)` : "90vw";
+		? `min(calc(100vw - 16px), calc((100dvh - 108px) * ${image.fullWidth / image.fullHeight}))` : "100vw";
 }
 
 $effect(() => {
@@ -111,19 +112,11 @@ function handleTouchEnd() {
   onkeydown={handleKeydown}
   aria-label="Image lightbox — {images.length ? index + 1 : 0} of {images.length}"
 >
-  <div class="image-stage" class:empty={images.length === 0} role="document">
-    <button
-      class="close-lightbox"
-      aria-label="Close lightbox"
-      onclick={onClose}
-    >
-      x
-    </button>
+  <button type="button" class="close-lightbox" aria-label="Close lightbox" onclick={onClose}>
+    <XIcon size={20} aria-hidden="true" />
+  </button>
 
-    <div class="image-count" aria-live="polite">
-      {images.length ? index + 1 : 0}/{images.length}
-    </div>
-
+  <div class="image-stage" role="document">
     {#if images.length}
     <img
       src={getImageUrl(images[index])}
@@ -144,45 +137,97 @@ function handleTouchEnd() {
       <p>No images available.</p>
     {/if}
 
-    {#if images.length > 1}
-      <button
-        type="button"
-        class="image-previous"
-        aria-label="Previous image"
-        onclick={prev}
-      >
-        ‹
-      </button>
-      <button
-        type="button"
-        class="image-next"
-        aria-label="Next image"
-        onclick={next}
-      >
-        ›
-      </button>
-    {/if}
   </div>
+
+  {#if images.length > 1}
+    <div class="image-navigation">
+      <button type="button" class="image-previous" aria-label="Previous image" onclick={prev}>
+        <ChevronLeftIcon size={20} aria-hidden="true" />
+      </button>
+      <span class="image-count" aria-live="polite" aria-atomic="true">{index + 1}/{images.length}</span>
+      <button type="button" class="image-next" aria-label="Next image" onclick={next}>
+        <ChevronRightIcon size={20} aria-hidden="true" />
+      </button>
+    </div>
+  {/if}
 </dialog>
 
 <style>
   @layer components {
-    .lightbox { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; color: white; background: rgb(0 0 0 / 90%); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-    .lightbox[open] { display: flex; align-items: center; justify-content: center; }
-    .lightbox::backdrop { background: transparent; }
-    .image-stage { position: relative; max-width: 90vw; max-height: 90vh; }
-    .image-stage.empty { min-width: 12rem; padding: 4rem 2rem 2rem; }
-    .close-lightbox { position: absolute; top: 1rem; right: 1rem; z-index: 10; padding: 0.5rem; color: white; background: rgb(0 0 0 / 75%); border-radius: 9999px; }
-    .image-count { position: absolute; top: 1rem; left: 1rem; z-index: 1; padding: 0.25rem 0.5rem; color: white; background: rgb(0 0 0 / 75%); border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
-    .gallery-image { width: auto; height: auto; max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 0.375rem; }
-    .image-previous, .image-next { position: absolute; top: 50%; translate: 0 -50%; color: white; background: rgb(0 0 0 / 75%); border-radius: 9999px; font-size: var(--text-4xl); line-height: var(--text-4xl--line-height); }
-    .image-previous { left: 1rem; }
-    .image-previous, .image-next { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
-    .image-next { right: 1rem; }
-    .close-lightbox:focus-visible, .image-previous:focus-visible, .image-next:focus-visible { outline: 2px solid white; outline-offset: 2px; box-shadow: 0 0 0 5px #000; }
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+        max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+      border: 0;
+      background: #090909;
+      color: white;
+      overflow: hidden;
+    }
+
+    .lightbox[open] {
+      display: grid;
+      grid-template-rows: 44px minmax(0, 1fr) 44px;
+      gap: 4px;
+    }
+
+    .image-stage {
+      display: grid;
+      grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+      place-items: center;
+      min-height: 0;
+      pointer-events: none;
+    }
+
+    .gallery-image {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      min-height: 0;
+      min-width: 0;
+      object-fit: contain;
+      pointer-events: auto;
+    }
+
+    .close-lightbox { justify-self: end; }
+    .image-navigation {
+      justify-self: center;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .image-count {
+      min-width: 5ch;
+      text-align: center;
+      font-size: var(--text-xs);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .lightbox button {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    .lightbox button:focus-visible { outline: 2px solid currentColor; }
     @media (hover: hover) {
-      .close-lightbox:hover { background: white; color: black; }
-      .image-previous:hover, .image-next:hover { color: white; }
+      .lightbox button:hover { background: #282828; }
     }
   }
 </style>
