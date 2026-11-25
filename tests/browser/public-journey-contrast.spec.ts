@@ -1,19 +1,28 @@
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 
-test("lightbox controls remain readable over a white image", async ({ page }) => {
-	const whiteImage = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="white"/></svg>')}`;
+test("lightbox controls stay outside the photograph and remain readable", async ({ page }) => {
+	const whiteImage = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="white"/></svg>')}`;
 	await page.goto(`/?fixture=content&kind=gallery&portfolio-image=${encodeURIComponent(whiteImage)}`);
 	await page.getByRole("button", { name: "Open portfolio lightbox" }).click();
 	const image = page.locator(".lightbox img");
 	await expect(image).toHaveAttribute("src", whiteImage);
 	await image.evaluate(image => (image as HTMLImageElement).decode());
+	const photo = await image.boundingBox();
+	expect(photo).not.toBeNull();
 	for (const selector of [".image-previous", ".image-next", ".image-count", ".close-lightbox"]) {
 		const control = page.locator(selector);
+		const bounds = await control.boundingBox();
+		expect(bounds).not.toBeNull();
+		if (selector === ".close-lightbox") {
+			expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(photo!.y);
+		} else {
+			expect(bounds!.y).toBeGreaterThanOrEqual(photo!.y + photo!.height);
+		}
 		await expect(control).toHaveCSS("color", "rgb(255, 255, 255)");
 		const screenshot = await control.screenshot({ scale: "css" });
 		const { data, info } = await sharp(screenshot).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-		// Sample the rendered backing above the glyph, inside its rounded edge.
+		// Sample the background above the glyph.
 		const offset = (3 * info.width + Math.floor(info.width / 2)) * info.channels;
 		const channels = [...data.subarray(offset, offset + 3)].map(channel => {
 			const value = channel / 255;
